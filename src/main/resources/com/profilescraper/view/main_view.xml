@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<view xmlns="http://jmix.io/schema/flowui/view"
+      title="Profile Scraper Agent — AI Recruitment Tool"
+      focusComponent="jobDescriptionField">
+
+    <layout>
+        <vbox padding="true" spacing="true" width="100%" classNames="main-view-layout">
+
+            <!-- ── Page Header ─────────────────────────────────────── -->
+            <h2 text="AI-Powered Candidate Profile Scraper"/>
+            <span text="Search by AI (no login) or select a portal and enter your credentials"
+                  classNames="sub-header"/>
+
+            <!-- ── Search Parameters Panel ────────────────────────── -->
+            <vbox width="100%" padding="true" spacing="true" classNames="section-panel">
+                <h3 text="Search Parameters"/>
+
+                <textArea id="jobDescriptionField"
+                          label="Job Description / Requirements"
+                          placeholder="e.g., Senior React Developer with 5+ years experience, based in Mumbai, fintech background preferred"
+                          width="100%"
+                          minHeight="120px"
+                          helperText="Be specific: include skills, years of experience, location, and industry"/>
+
+                <!--
+                    Portal selection + credentials are added programmatically in MainView.java
+                    (ComboBox<JobPortal>, TextField for username, PasswordField for password).
+                    This vbox acts as a mount point.
+                -->
+                <vbox id="portalSelectionSection" width="100%" spacing="true"/>
+
+                <hbox spacing="true" alignItems="CENTER">
+                    <button id="searchBtn"
+                            text="Search Candidates"
+                            themeNames="primary"/>
+                    <button id="cancelBtn"
+                            text="Cancel"
+                            themeNames="error tertiary"
+                            visible="false"/>
+                    <button id="clearBtn"
+                            text="Clear"
+                            themeNames="tertiary"/>
+                </hbox>
+
+                <!-- Indeterminate progress bar shown while search is running -->
+                <progressBar id="searchProgress"
+                             indeterminate="true"
+                             width="100%"
+                             visible="false"/>
+
+            </vbox>
+
+            <!-- ── Results Panel ──────────────────────────────────── -->
+            <vbox width="100%" padding="true" spacing="true" classNames="section-panel">
+
+                <hbox spacing="true" alignItems="CENTER" width="100%">
+                    <h3 id="resultsPanelTitle" text="Results (0 candidates found)"/>
+                </hbox>
+
+                <hbox spacing="true" alignItems="CENTER">
+                    <button id="exportBtn"
+                            text="Export to Excel"
+                            themeNames="success"
+                            enabled="false"/>
+                    <span id="exportHint"
+                          text="Run a search first to enable export"
+                          classNames="export-hint"/>
+                </hbox>
+
+                <!-- Summary badge: shown after a search completes -->
+                <span id="summaryBadge"
+                      classNames="summary-badge"
+                      visible="false"/>
+
+                <!--
+                    Grid placeholder — Vaadin Grid<CandidateProfile> is added
+                    programmatically in MainView.java via this VerticalLayout.
+                -->
+                <vbox id="gridContainer"
+                      width="100%"
+                      minHeight="400px"/>
+
+            </vbox>
+
+            <!-- ── Status Bar ─────────────────────────────────────── -->
+            <hbox spacing="true" padding="false" alignItems="CENTER">
+                <span id="statusLabel"
+                      text="Ready to search. Enter a job description and click 'Search Candidates'."
+                      classNames="status-label"/>
+            </hbox>
+
+        </vbox>
+    </layout>
+</view>

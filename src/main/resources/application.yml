@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: profile-scraper-agent
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=false
+    driverClassName: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+  liquibase:
+    enabled: false
+
+# -------------------------------------------------------
+# JMIX Flow UI configuration (replaces legacy jmix.ui.*)
+# -------------------------------------------------------
+jmix:
+  flowui:
+    # Menu items for the Flow UI navigation drawer
+    menu-config: com/profilescraper/menu.xml
+    # Theme is omitted → JMIX Flow UI defaults to Lumo (light).
+    # To use dark mode add:  theme: lumo-dark
+  core:
+    conf-dir: ${user.dir}/jmix/conf
+
+# Vaadin settings
+# NOTE: Do NOT set vaadin.urlMapping here.
+#       In Vaadin 24 + Spring Boot 3, VaadinServlet is auto-registered.
+#       Setting urlMapping="/*" conflicts with DispatcherServlet's "/*"
+#       mapping and causes "Unable to start web server" at startup.
+vaadin:
+  # Disable production mode for development (no npm/node.js build required)
+  productionMode: false
+  # Enable WebSocket server-push so that ui.access() calls made by background
+  # threads (e.g. the scraper executor) immediately reach the browser.
+  # Without this, queued UI updates are only sent on the next HTTP request
+  # from the client — which never happens while the progress bar is spinning.
+  push-mode: automatic
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+    session:
+      persistent: false   # don't write sessions to disk — avoids deserialisation errors on restart
+
+logging:
+  level:
+    root: INFO
+    com.profilescraper: DEBUG
+    io.jmix: INFO
+    com.vaadin: INFO

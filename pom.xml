@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.profilescraper</groupId>
+    <artifactId>profile-scraper-agent</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Profile Scraper Agent</name>
+    <description>AI-powered recruitment candidate profile scraper — JMIX Flow UI (Vaadin 24)</description>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <poi.version>5.2.5</poi.version>
+        <jackson.version>2.15.2</jackson.version>
+        <jmix.version>2.8.0</jmix.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.jmix.bom</groupId>
+                <artifactId>jmix-bom</artifactId>
+                <version>${jmix.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <repositories>
+        <repository>
+            <id>jmix-releases</id>
+            <name>Jmix Releases</name>
+            <url>https://nexus.jmix.io/repository/public</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             JMIX Flow UI  (Vaadin 24 — includes spring-boot-starter-web
+             + embedded Tomcat transitively; do NOT add starter-web again
+             or a second DispatcherServlet registration will crash Tomcat)
+             ══════════════════════════════════════════════════════════════ -->
+        <dependency>
+            <groupId>io.jmix.flowui</groupId>
+            <artifactId>jmix-flowui-starter</artifactId>
+        </dependency>
+
+        <!-- JMIX Core auto-configuration -->
+        <dependency>
+            <groupId>io.jmix.core</groupId>
+            <artifactId>jmix-core-starter</artifactId>
+        </dependency>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             JMIX Data layer — EclipseLink (JMIX's supported JPA provider).
+             Replaces spring-boot-starter-data-jpa / Hibernate which caused
+             "Unable to start embedded Tomcat" due to JPA provider conflict:
+               spring-boot-starter-data-jpa → Hibernate
+               jmix-core-starter            → EclipseLink
+             Two providers fighting for javax.persistence bootstrap crashed
+             the ServletContextInitializer and brought down embedded Tomcat.
+             ══════════════════════════════════════════════════════════════ -->
+        <dependency>
+            <groupId>io.jmix.data</groupId>
+            <artifactId>jmix-eclipselink-starter</artifactId>
+        </dependency>
+
+        <!-- H2 in-memory database (used by JMIX's own datastore) -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Spring Boot DevTools (hot reload) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             Business / AI layer
+             ══════════════════════════════════════════════════════════════ -->
+
+        <!-- Gemini 2.0 Flash — uses Java 11 HttpClient (built-in, no extra SDK needed) -->
+
+        <!-- ══════════════════════════════════════════════════════════════
+             Playwright — browser automation for portal scraping
+             After first build, install browser binaries once with:
+               mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI \
+                             -D exec.args="install chromium"
+             ══════════════════════════════════════════════════════════════ -->
+        <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>1.44.0</version>
+        </dependency>
+
+        <!-- Apache POI — Excel (.xlsx) generation -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+
+        <!-- Jackson — JSON parsing for AI responses -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             Logging — versions managed by jmix-bom / Spring Boot BOM.
+             Janino provides JaninoEventEvaluatorBase used by logback-core.
+             ══════════════════════════════════════════════════════════════ -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.codehaus.janino</groupId>
+            <artifactId>janino</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <!-- Spring Boot fat JAR -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.profilescraper.ProfileScraperApplication</mainClass>
+                </configuration>
+            </plugin>
+
+            <!--
+                Vaadin Maven Plugin — prepares the Vaadin frontend bundle.
+                Run once before first launch (or after Vaadin version bumps):
+                    mvn vaadin:prepare-frontend
+                For production build:
+                    mvn vaadin:build-frontend -Pproduction
+            -->
+            <plugin>
+                <groupId>com.vaadin</groupId>
+                <artifactId>vaadin-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-frontend</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- CLI JAR (for standalone command-line use) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.profilescraper.Main</mainClass>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>lib/</classpathPrefix>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+
+            <!-- Copy dependencies to lib/ for CLI execution -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.6.1</version>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Shade fat JAR -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <id>shade</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>fat</shadedClassifierName>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.profilescraper.Main</mainClass>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+</project>

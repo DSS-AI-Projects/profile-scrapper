@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Profile Scraper Agent — Workflow Diagram (with SERP API)</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f4f8;
+      padding: 32px 24px;
+      color: #1a202c;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #1a365d;
+      letter-spacing: -0.5px;
+    }
+    header p {
+      margin-top: 6px;
+      font-size: 14px;
+      color: #4a5568;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      padding: 28px;
+    }
+    .card.full {
+      grid-column: 1 / -1;
+    }
+    .card h2 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #e2e8f0;
+      color: #2d3748;
+    }
+    .card h2 .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+    .badge-ai     { background:#d1fae5; color:#065f46; }
+    .badge-portal { background:#fef3c7; color:#92400e; }
+    .badge-full   { background:#dbeafe; color:#1e40af; }
+    .mermaid { overflow-x: auto; }
+    footer {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: #718096;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .card.full { grid-column: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Profile Scraper Agent — Workflow Diagram</h1>
+  <p>End-to-end flow from user input through scraping to Excel export</p>
+</header>
+
+<div class="grid">
+
+  <!-- ── Main User Workflow ──────────────────────────────────────────────── -->
+  <div class="card full">
+    <h2>Main User Workflow <span class="badge badge-full">Complete Flow</span></h2>
+    <div class="mermaid">
+flowchart TD
+    A(["👤 User Opens Browser\nhttp://localhost:8080"])
+    B["Enter Job Description\nin TextArea"]
+    C{"Select Portal?"}
+
+    D1["Leave Portal blank\n→ AI Search mode"]
+    D2["Select LinkedIn / Naukri / Indeed / SERP API\n→ Enter Credentials or API Key"]
+
+    E{"Validate\nInputs"}
+    EVAL["❌ Show validation error\n(highlight field)"]
+
+    F["Click 'Search Candidates'"]
+    G["UI enters In-Progress state\n• Disable Search / Clear buttons\n• Show Cancel button\n• Show progress bar\n• Show status message"]
+
+    H["CompletableFuture submitted\nto scraperExecutor thread pool\n(core=2, max=4)"]
+
+    I{"Which\npath?"}
+    J["🤖 AI Path\nProfileScraperAgent"]
+    K["🌐 Portal Path\nPortalScraperFactory"]
+
+    L["Results pushed to UI\nvia WebSocket ui.access()"]
+    M["Grid populated\nSummary badge updated\nStatus message shown"]
+
+    N{"Results\nfound?"}
+    O["✅ Success notification\n'Found N candidates!'"]
+    P["⚠️ Empty notification\n'No candidates matched'"]
+
+    Q["Click 'Export to Excel'"]
+    R["ExcelExporter → .xlsx\nsaved to temp dir"]
+    S["Downloader streams file\nto browser as download"]
+
+    T(["✅ Recruiter reviews\nExcel spreadsheet"])
+
+    A --> B --> C
+    C -->|"No portal"| D1
+    C -->|"Portal selected"| D2
+    D1 --> E
+    D2 --> E
+    E -->|"Invalid"| EVAL
+    EVAL --> B
+    E -->|"Valid"| F --> G --> H --> I
+    I -->|"No portal"| J
+    I -->|"Portal chosen"| K
+    J --> L
+    K --> L
+    L --> M --> N
+    N -->|"N > 0"| O --> Q
+    N -->|"N = 0"| P
+    Q --> R --> S --> T
+
+    classDef action  fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a
+    classDef decision fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef system  fill:#ede9fe,stroke:#7c3aed,color:#3b0764
+    classDef success fill:#d1fae5,stroke:#10b981,color:#064e3b
+    classDef error   fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    classDef term    fill:#1e293b,stroke:#0f172a,color:#f1f5f9
+
+    class B,D1,D2,F,Q action
+    class C,E,I,N decision
+    class G,H,L,M,R,S system
+    class O,T success
+    class EVAL,P error
+    class A term
+    </div>
+  </div>
+
+  <!-- ── AI Path ────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>AI Search Path <span class="badge badge-ai">Gemini 2.0 Flash</span></h2>
+    <div class="mermaid">
+flowchart TD
+    A1["ScraperService\n.scrapeProfiles(jobDescription)"]
+    A2["ProfileScraperAgent\nbuildPrompt(jobDescription)"]
+    A3["HTTP POST to\nGemini 2.0 Flash API\n+ Google Search grounding"]
+    A4["Gemini searches web\nfor matching candidates"]
+    A5["API returns JSON response\nwith candidate data"]
+    A6["Parse JSON\nJackson ObjectMapper"]
+    A7{"Valid\ncandidates?"}
+    A8["Map to\nList&lt;CandidateProfile&gt;"]
+    A9["Set MatchScore\n(HIGH / MEDIUM / LOW)"]
+    A10(["Return profiles\nto ScraperService"])
+    ERR(["Throw exception\n→ UI shows error"])
+
+    A1 --> A2 --> A3 --> A4 --> A5 --> A6 --> A7
+    A7 -->|"Yes"| A8 --> A9 --> A10
+    A7 -->|"No / Error"| ERR
+
+    classDef step    fill:#d1fae5,stroke:#10b981,color:#064e3b
+    classDef decide  fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef term    fill:#065f46,stroke:#047857,color:#ecfdf5
+    classDef err     fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+
+    class A1,A2,A3,A4,A5,A6,A8,A9 step
+    class A7 decide
+    class A10 term
+    class ERR err
+    </div>
+  </div>
+
+  <!-- ── Portal Path ────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Portal Scraping Path <span class="badge badge-portal">Playwright</span></h2>
+    <div class="mermaid">
+flowchart TD
+    B1["ScraperService\n.scrapeProfiles(jd, portal, user, pass)"]
+    B2["PortalScraperFactory\n.get(portal)"]
+    B2A{"Portal type?"}
+
+    B_SERP["SerpApiScraper\n(no browser needed)"]
+    B_SERP2["Build Google query\nsite:linkedin.com/in/\n+ cleaned JD keywords"]
+    B_SERP3["HTTP GET → SerpAPI\nserpapi.com/search.json\napi_key + num=20"]
+    B_SERP4["Parse organic_results\nExtract name/title/company\nfrom Google title string"]
+    B_SERP5(["Return List&lt;CandidateProfile&gt;"])
+
+    B3["Create Playwright\nBrowserContext\n(non-headless for LinkedIn)"]
+    B4{"Saved session\nvalid?"}
+    B5["Reuse saved cookies\n(skip login)"]
+    B6["Navigate to login page\nFill username + password\nClick Submit"]
+    B7{"Login\nsucceeded?"}
+    B8["Build search URL\nkeywords = cleaned JD\n/search/results/people/"]
+    B9["Navigate to search URL\nwaitForLoadState NETWORKIDLE\nwait 4 sec"]
+    B10["Scroll down 6×500px\nto trigger lazy loading\nScroll back to top"]
+    B11["Extract result cards\n(4 CSS strategies\n+ JS link scan)"]
+    B12["Deduplicate by\nprofile URL"]
+    B13["Visit each profile page\n(up to 20)\nEnrich: Name, Title,\nCompany, Location,\nExperience, Skills"]
+    B14(["Return List&lt;CandidateProfile&gt;"])
+    ERR2(["Throw Exception\n→ UI shows error msg"])
+
+    B1 --> B2 --> B2A
+    B2A -->|"SERP API"| B_SERP --> B_SERP2 --> B_SERP3 --> B_SERP4 --> B_SERP5
+    B2A -->|"LinkedIn/Naukri/Indeed"| B3 --> B4
+    B4 -->|"Yes"| B5 --> B8
+    B4 -->|"No"| B6 --> B7
+    B7 -->|"Success"| B8
+    B7 -->|"CAPTCHA / Fail"| ERR2
+    B8 --> B9 --> B10 --> B11 --> B12 --> B13 --> B14
+
+    classDef step   fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef serp   fill:#d1fae5,stroke:#10b981,color:#064e3b
+    classDef decide fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+    classDef term   fill:#92400e,stroke:#78350f,color:#fffbeb
+    classDef err    fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+
+    class B1,B2,B3,B5,B6,B8,B9,B10,B11,B12,B13 step
+    class B_SERP,B_SERP2,B_SERP3,B_SERP4 serp
+    class B2A,B4,B7 decide
+    class B14,B_SERP5 term
+    class ERR2 err
+    </div>
+  </div>
+
+  <!-- ── LinkedIn Detail ────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>LinkedIn Extraction Detail <span class="badge badge-portal">DOM → Profile</span></h2>
+    <div class="mermaid">
+flowchart TD
+    C1["Page loaded at\nsearch results URL"]
+    C2["Dismiss modals\n(upsell overlays)"]
+    C3["Try CSS Strategy 1\nli.reusable-search__result-container"]
+    C4{"Cards\nfound?"}
+    C5["Try CSS Strategy 2-4\n.entity-result\n[data-chameleon-result-urn]\ndiv[class*=entity-result]"]
+    C6{"Cards\nfound?"}
+    C7["JS Extraction\ndocument.querySelectorAll('a')\nfilter href contains /in/slug"]
+    C8["Name sources (in order)\n1. aria-label\n2. span[aria-hidden]\n3. img alt attribute\n4. link textContent\n5. URL slug fallback"]
+    C9["Extract Title & Location\nfrom card container\ntext nodes"]
+    C10["Profile Visit\nnavigate to /in/slug/"]
+    C11["Extract from profile page\n• h1 → Full Name\n• headline div → Title at Company\n• location span → Location"]
+    C12["Extract Experience section\n• company-view vs single-role\n• content-based span parsing\n• duration → years"]
+    C13["Extract Skills section\nTop 5 skills\nspan[aria-hidden] scan"]
+    C14(["Enriched\nCandidateProfile"])
+
+    C1 --> C2 --> C3 --> C4
+    C4 -->|"Yes"| C9
+    C4 -->|"No"| C5 --> C6
+    C6 -->|"Yes"| C9
+    C6 -->|"No"| C7 --> C8 --> C9
+    C9 --> C10 --> C11 --> C12 --> C13 --> C14
+
+    classDef step   fill:#fef3c7,stroke:#f59e0b,color:#78350f
+    classDef decide fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+    classDef term   fill:#92400e,stroke:#78350f,color:#fffbeb
+
+    class C1,C2,C3,C5,C7,C8,C9,C10,C11,C12,C13 step
+    class C4,C6 decide
+    class C14 term
+    </div>
+  </div>
+
+  <!-- ── Excel Export ───────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2>Excel Export Workflow <span class="badge badge-full">Apache POI</span></h2>
+    <div class="mermaid">
+flowchart TD
+    D1["User clicks\n'Export to Excel'"]
+    D2["Build filename\ncandidates_&lt;slug&gt;_&lt;portal&gt;_&lt;date&gt;.xlsx"]
+    D3["ExcelExporter\n.exportToExcel(profiles, path)"]
+    D4["Create XSSFWorkbook\nSheet: 'Candidates'"]
+    D5["Row 1: Title row\n'Profile Scraper Agent — Candidate Results'\n(merged, dark blue)"]
+    D6["Row 2: Subtitle row\nTotal | High | Medium | Low counts\n(italic)"]
+    D7["Row 3: Blank spacer"]
+    D8["Row 4: Header row\n11 columns with bold grey style\nAuto-filter enabled"]
+    D9["Data rows\nColour-coded Match Score\nHIGH=green MEDIUM=yellow LOW=red"]
+    D10["Set column widths\nFreeze top 4 rows\nAuto-filter on headers"]
+    D11["Write to temp file\n(java.io.tmpdir)"]
+    D12["Downloader.download()\nstreams bytes to browser"]
+    D13(["Browser saves\n.xlsx file"])
+
+    D1 --> D2 --> D3 --> D4 --> D5 --> D6 --> D7 --> D8 --> D9 --> D10 --> D11 --> D12 --> D13
+
+    classDef step fill:#fce7f3,stroke:#ec4899,color:#831843
+    classDef term fill:#831843,stroke:#9d174d,color:#fdf2f8
+
+    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11,D12 step
+    class D13 term
+    </div>
+  </div>
+
+  <!-- ── Data Model ─────────────────────────────────────────────────────── -->
+  <div class="card full">
+    <h2>Data Model — CandidateProfile <span class="badge badge-full">Central Entity</span></h2>
+    <div class="mermaid">
+classDiagram
+    class CandidateProfile {
+        +String fullName
+        +String currentTitle
+        +String currentCompany
+        +String location
+        +String yearsOfExperience
+        +String keySkills
+        +String profileUrl
+        +String email
+        +String phone
+        +String summary
+        +MatchScore matchScore
+        +getFullName() String
+        +setFullName(String)
+    }
+
+    class MatchScore {
+        <<enumeration>>
+        HIGH
+        MEDIUM
+        LOW
+        UNKNOWN
+        +from(String) MatchScore
+        +display() String
+        +toJson() String
+    }
+
+    class PortalScraper {
+        <<interface>>
+        +scrapeProfiles(jd, user, pass) List~CandidateProfile~
+        +getPortal() JobPortal
+    }
+
+    class AbstractPortalScraper {
+        <<abstract>>
+        #logger Logger
+        #createBrowser(Playwright) Browser
+        #createContext(Browser) BrowserContext
+        #safeText(ElementHandle, String) String
+        #safeAttr(ElementHandle, String, String) String
+        #safePageText(Page, String) String
+        #extractKeywords(String) String
+    }
+
+    class LinkedInScraper {
+        -SESSION_DIR Path
+        -MAX_PROFILES_TO_ENRICH int
+        +scrapeProfiles(jd, user, pass) List~CandidateProfile~
+        -isLoggedIn(Page) bool
+        -login(Page, String, String)
+        -buildSearchUrl(String) String
+        -searchPeople(Page, String) List~CandidateProfile~
+        -extractResultsPage(Page) List~CandidateProfile~
+        -extractWithJavaScript(Page) List~CandidateProfile~
+        -visitProfilePage(Page, CandidateProfile)
+        -extractExperience(Page, CandidateProfile)
+        -extractSkills(Page, CandidateProfile)
+        -detectBlockedPage(Page) String
+        -dismissModals(Page)
+    }
+
+    class NaukriScraper {
+        +scrapeProfiles(jd, user, pass) List~CandidateProfile~
+        -login(Page, String, String)
+    }
+
+    class IndeedScraper {
+        +scrapeProfiles(jd, user, pass) List~CandidateProfile~
+        -login(Page, String, String)
+        -extractProfile(ElementHandle) CandidateProfile
+    }
+
+    class SerpApiScraper {
+        -SERPAPI_ENDPOINT String
+        -MAX_RESULTS int
+        +scrapeProfiles(jd, apiKey, ignored) List~CandidateProfile~
+        -callSerpApi(query, apiKey) String
+        -parseResponse(json) List~CandidateProfile~
+        -parseResult(JsonNode) CandidateProfile
+    }
+
+    class JobPortal {
+        <<enumeration>>
+        LINKEDIN
+        NAUKRI
+        INDEED
+        SERP_API
+        +getDisplayName() String
+        +getBaseUrl() String
+        +isApiKeyOnly() boolean
+    }
+
+    class PortalScraperFactory {
+        -SCRAPERS Map~JobPortal,PortalScraper~
+        +get(JobPortal) PortalScraper$
+    }
+
+    class ScraperService {
+        -agent ProfileScraperAgent
+        +scrapeProfiles(jd) List~CandidateProfile~
+        +scrapeProfiles(jd, portal, user, pass) List~CandidateProfile~
+    }
+
+    class ProfileScraperAgent {
+        -apiKey String
+        +scrapeProfiles(jd) List~CandidateProfile~
+        -buildPrompt(String) String
+        -callGeminiApi(String) String
+        -parseResponse(String) List~CandidateProfile~
+    }
+
+    class ExcelExporter {
+        -HEADERS String[]
+        -COLUMN_WIDTHS int[]
+        +exportToExcel(List~CandidateProfile~, String)
+    }
+
+    CandidateProfile "1" --> "1" MatchScore : has
+    PortalScraper <|.. AbstractPortalScraper : implements
+    AbstractPortalScraper <|-- LinkedInScraper : extends
+    AbstractPortalScraper <|-- NaukriScraper : extends
+    AbstractPortalScraper <|-- IndeedScraper : extends
+    AbstractPortalScraper <|-- SerpApiScraper : extends
+    PortalScraperFactory --> PortalScraper : creates
+    PortalScraperFactory --> JobPortal : keyed by
+    ScraperService --> PortalScraperFactory : delegates to
+    ScraperService --> ProfileScraperAgent : delegates to
+    LinkedInScraper --> CandidateProfile : produces
+    NaukriScraper --> CandidateProfile : produces
+    IndeedScraper --> CandidateProfile : produces
+    SerpApiScraper --> CandidateProfile : produces
+    ProfileScraperAgent --> CandidateProfile : produces
+    ExcelExporter --> CandidateProfile : reads
+    </div>
+  </div>
+
+</div><!-- /grid -->
+
+<footer>Profile Scraper Agent · Workflow &amp; Data Model Diagrams · Generated 2026</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#dbeafe',
+      primaryTextColor: '#1e3a8a',
+      primaryBorderColor: '#3b82f6',
+      lineColor: '#4b5563',
+      secondaryColor: '#ede9fe',
+      tertiaryColor: '#d1fae5',
+      fontSize: '13px'
+    },
+    flowchart:  { curve: 'basis', padding: 16 },
+    classDiagram: { useMaxWidth: true }
+  });
+</script>
+</body>
+</html>

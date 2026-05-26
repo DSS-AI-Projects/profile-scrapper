@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+    JMIX Flow UI menu configuration.
+    Namespace changed from http://jmix.io/schema/ui/menu-config
+                       to  http://jmix.io/schema/flowui/menu-config
+    "screen" attribute replaced with "view" (the @ViewController ID).
+    Icons now use Vaadin Lumo icon set (vaadin:*).
+-->
+<menu-config xmlns="http://jmix.io/schema/flowui/menu-config">
+    <item view="MainView"
+          title="Profile Scraper"
+          icon="vaadin:search"/>
+</menu-config>

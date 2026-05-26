@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Profile Scraper Agent — Architecture Diagram (with SERP API)</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f4f8;
+      padding: 32px 24px;
+      color: #1a202c;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #1a365d;
+      letter-spacing: -0.5px;
+    }
+    header p {
+      margin-top: 6px;
+      font-size: 14px;
+      color: #4a5568;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      padding: 32px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .mermaid {
+      overflow-x: auto;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid #e2e8f0;
+      justify-content: center;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #4a5568;
+    }
+    .legend-box {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      border: 2px solid rgba(0,0,0,0.15);
+      flex-shrink: 0;
+    }
+    footer {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: #718096;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Profile Scraper Agent — System Architecture</h1>
+  <p>Java 17 · Spring Boot 3 · JMIX 2.8 · Vaadin 24 · Playwright 1.44 · SerpAPI · Apache POI</p>
+</header>
+
+<div class="card">
+  <div class="mermaid">
+graph TB
+
+  %% ── User ─────────────────────────────────────────────────────────────────
+  USER(["👤 Recruiter / User\n(Web Browser)"])
+
+  %% ── Frontend ─────────────────────────────────────────────────────────────
+  subgraph FE["  Frontend — JMIX Flow UI · Vaadin 24  "]
+    direction TB
+    MV["MainView\n─────────────────\n• Job Description TextArea\n• Portal ComboBox\n• Username / Password fields\n• Results Grid\n• Export Button"]
+    PUSH["WebSocket Push\n─────────────\n@Push(AUTOMATIC)\nAppShellConfigurator\nReal-time UI updates"]
+  end
+
+  %% ── Application Layer ────────────────────────────────────────────────────
+  subgraph APP["  Application Layer — Spring Boot 3  "]
+    direction LR
+    CFG["AppConfig\n──────────\nThreadPoolTaskExecutor\ncore=2  max=4\nqueue=10\nprefix: scraper-"]
+    SS["ScraperService\n──────────────\n@Service\nRoutes to AI or\nPortal scraper"]
+  end
+
+  %% ── AI Path ──────────────────────────────────────────────────────────────
+  subgraph AI["  AI Search Path  "]
+    PSA["ProfileScraperAgent\n───────────────────\nGemini 2.0 Flash\nREST client\nJSON response parser"]
+  end
+
+  %% ── Portal Path ──────────────────────────────────────────────────────────
+  subgraph PORTAL["  Portal Scraper Path  "]
+    direction TB
+    PSF["PortalScraperFactory\n────────────────────\nEnumMap registry\nLinkedIn · Naukri · Indeed"]
+
+    subgraph SCRAPERS["  Portal Scrapers  "]
+      direction LR
+      APS["AbstractPortalScraper\n──────────────────────\ncreateBrowser()\ncreateContext()\nsafeText() safeAttr()\nextractKeywords()"]
+      SA["SerpApiScraper\n──────────────\nNo browser / no login\nHTTP → SerpAPI\nsite:linkedin.com/in/\nJSON parse only"]
+      LS["LinkedInScraper\n───────────────\nPersistent session\n~/.profile-scraper/\nNon-headless Chrome\nJS DOM extraction\nProfile enrichment"]
+      NS["NaukriScraper\n─────────────\nHeadless Chrome\nRecruiter login\nResume search"]
+      IS["IndeedScraper\n─────────────\nHeadless Chrome\nTwo-step login\nResume search"]
+    end
+  end
+
+  %% ── Output ───────────────────────────────────────────────────────────────
+  subgraph OUT["  Output Layer  "]
+    CP["CandidateProfile\n─────────────────\nfullName · currentTitle\ncurrentCompany · location\nyearsOfExperience\nkeySkills · email · phone\nprofileUrl · matchScore"]
+    EE["ExcelExporter\n─────────────\nApache POI\nXSSFWorkbook\nColour-coded scores\nAuto-filter headers"]
+  end
+
+  %% ── External Systems ─────────────────────────────────────────────────────
+  subgraph EXT["  External Systems  "]
+    direction LR
+    GEMINI(["🤖 Google Gemini 2.0 Flash\nREST API\nSearch Grounding"])
+    SERP(["🔍 SerpAPI\nserpapi.com\nGoogle Search JSON\nsite:linkedin.com/in/"])
+    LIN(["🔗 LinkedIn\nlinkedin.com\nPeople Search"])
+    NAU(["🔗 Naukri\nnaukri.com\nResume Database"])
+    IND(["🔗 Indeed\nresumes.indeed.com\nCandidate Search"])
+  end
+
+  %% ── Local Storage ────────────────────────────────────────────────────────
+  subgraph STORE["  Local Storage  "]
+    direction LR
+    SES[("LinkedIn Session\n~/.profile-scraper/\nlinkedin-session/\nPersisted cookies")]
+    XLS[("Excel Output\n.xlsx — system\ntemp directory\nDownloaded via browser")]
+  end
+
+  %% ── Connections ──────────────────────────────────────────────────────────
+  USER      <-->|"HTTP / WebSocket"| MV
+  MV        <-->|"ui.access()"| PUSH
+  MV        -->|"CompletableFuture\nasync submit"| CFG
+  CFG       -->|"Executor thread"| SS
+
+  SS        -->|"No portal selected"| PSA
+  SS        -->|"Portal + credentials"| PSF
+
+  PSA       -->|"HTTPS REST"| GEMINI
+  GEMINI    -->|"JSON candidates"| PSA
+
+  PSF       --> SA
+  PSF       --> LS
+  PSF       --> NS
+  PSF       --> IS
+  SA        -.->|"extends"| APS
+  LS        -.->|"extends"| APS
+  NS        -.->|"extends"| APS
+  IS        -.->|"extends"| APS
+
+  SA        <-->|"HTTPS REST\n(API key only)"| SERP
+  SERP      -->|"Google indexes\nLinkedIn profiles"| LIN
+  LS        <-->|"Playwright CDP"| LIN
+  NS        <-->|"Playwright CDP"| NAU
+  IS        <-->|"Playwright CDP"| IND
+  LS        <-->|"Read/Write"| SES
+
+  PSA       -->|"List&lt;CandidateProfile&gt;"| CP
+  SA        -->|"List&lt;CandidateProfile&gt;"| CP
+  LS        -->|"List&lt;CandidateProfile&gt;"| CP
+  NS        -->|"List&lt;CandidateProfile&gt;"| CP
+  IS        -->|"List&lt;CandidateProfile&gt;"| CP
+
+  CP        -->|"Push via WebSocket"| MV
+  MV        -->|"Export click"| EE
+  EE        -->|".xlsx"| XLS
+  XLS       -->|"Browser download"| USER
+
+  %% ── Styles ───────────────────────────────────────────────────────────────
+  classDef frontend  fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a8a
+  classDef appLayer  fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#3b0764
+  classDef aiPath    fill:#d1fae5,stroke:#10b981,stroke-width:2px,color:#064e3b
+  classDef scraper   fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#78350f
+  classDef output    fill:#fce7f3,stroke:#ec4899,stroke-width:2px,color:#831843
+  classDef external  fill:#f1f5f9,stroke:#64748b,stroke-width:2px,color:#1e293b
+  classDef storage   fill:#fff7ed,stroke:#ea580c,stroke-width:2px,color:#7c2d12
+  classDef user      fill:#e0f2fe,stroke:#0284c7,stroke-width:3px,color:#0c4a6e
+
+  class MV,PUSH      frontend
+  class CFG,SS       appLayer
+  class PSA          aiPath
+  class PSF,SA,LS,NS,IS,APS scraper
+  class CP,EE        output
+  class GEMINI,LIN,NAU,IND external
+  class SES,XLS      storage
+  class USER         user
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-box" style="background:#dbeafe;border-color:#3b82f6"></div> Frontend (Vaadin/JMIX)</div>
+    <div class="legend-item"><div class="legend-box" style="background:#ede9fe;border-color:#7c3aed"></div> Application Layer (Spring)</div>
+    <div class="legend-item"><div class="legend-box" style="background:#d1fae5;border-color:#10b981"></div> AI Search Path (Gemini)</div>
+    <div class="legend-item"><div class="legend-box" style="background:#fef3c7;border-color:#f59e0b"></div> Portal Scrapers (Playwright)</div>
+    <div class="legend-item"><div class="legend-box" style="background:#fce7f3;border-color:#ec4899"></div> Output (Model / Excel)</div>
+    <div class="legend-item"><div class="legend-box" style="background:#f1f5f9;border-color:#64748b"></div> External Systems (Gemini · SerpAPI · LinkedIn · Naukri · Indeed)</div>
+    <div class="legend-item"><div class="legend-box" style="background:#fff7ed;border-color:#ea580c"></div> Local Storage</div>
+  </div>
+</div>
+
+<footer>Profile Scraper Agent · Architecture Diagram · Generated 2026</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#dbeafe',
+      primaryTextColor: '#1e3a8a',
+      primaryBorderColor: '#3b82f6',
+      lineColor: '#4b5563',
+      secondaryColor: '#ede9fe',
+      tertiaryColor: '#d1fae5',
+      fontSize: '13px'
+    },
+    flowchart: { curve: 'basis', padding: 20 }
+  });
+</script>
+</body>
+</html>

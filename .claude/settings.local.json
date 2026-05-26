@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "Read(//c//**)",
+      "Read(//c/Users/Admin/**)",
+      "Bash(find /c -maxdepth 3 -name *profile-scraper* -type d)"
+    ]
+  }
+}

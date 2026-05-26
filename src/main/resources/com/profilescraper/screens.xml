@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+    NOTE: This file is NO LONGER USED in JMIX Flow UI.
+
+    In the legacy JMIX UI, views ("screens") had to be registered here.
+    In JMIX Flow UI, views are auto-discovered via classpath scanning:
+      - Annotate each view class with @ViewController("<viewId>")
+      - Annotate with @ViewDescriptor("<descriptor>.xml")
+      - Optionally add @Route(value = "<path>") for direct URL access.
+
+    The main view is now:
+      Java:  com.profilescraper.view.MainView  (@ViewController("MainView"))
+      XML:   com/profilescraper/view/main_view.xml
+
+    This file is kept as a placeholder. It can be safely deleted.
+-->

@@ -1,0 +1,77 @@
+# ===========================
+# Maven
+# ===========================
+target/
+dependency-reduced-pom.xml
+*.jar
+*.war
+*.ear
+*.class
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# ===========================
+# Node / npm (Vaadin frontend)
+# ===========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# ===========================
+# Vaadin
+# ===========================
+src/main/dev-bundle/
+src/main/bundles/
+webpack.config.js
+webpack.generated.js
+vite.config.ts
+vite.generated.ts
+.vaadin/
+
+# ===========================
+# IntelliJ IDEA
+# ===========================
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# ===========================
+# Eclipse
+# ===========================
+.classpath
+.project
+.settings/
+bin/
+
+# ===========================
+# VS Code
+# ===========================
+.vscode/
+
+# ===========================
+# Logs & runtime
+# ===========================
+*.log
+logs/
+
+# ===========================
+# OS generated
+# ===========================
+.DS_Store
+Thumbs.db
+
+# ===========================
+# Environment / secrets
+# ===========================
+.env
+.env.local
+.env*.local
+application-local.properties
+application-local.yml
