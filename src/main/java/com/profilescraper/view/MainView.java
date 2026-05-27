@@ -491,12 +491,13 @@ public class MainView extends StandardView {
     }
 
     private String buildOutputFileName() {
-        String raw  = jobDescriptionField.getValue();
-        String slug = raw
+        String raw     = jobDescriptionField.getValue();
+        String cleaned = raw
                 .replaceAll("[^a-zA-Z0-9 ]", " ")
                 .trim()
-                .replaceAll("\\s+", " ")
-                .substring(0, Math.min(50, raw.length()))
+                .replaceAll("\\s+", " ");
+        String slug = cleaned
+                .substring(0, Math.min(50, cleaned.length()))  // use cleaned length, not raw length
                 .trim()
                 .toLowerCase()
                 .replaceAll("\\s+", "-");
