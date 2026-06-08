@@ -1,8 +1,10 @@
 package com.profilescraper.view;
 
 import com.profilescraper.ExcelExporter;
+import com.profilescraper.ExclusionListParser;
 import com.profilescraper.model.CandidateProfile;
 import com.profilescraper.model.CandidateProfile.MatchScore;
+import com.profilescraper.model.SearchCriteria;
 import com.profilescraper.scraper.JobPortal;
 import com.profilescraper.service.ScraperService;
 
@@ -10,14 +12,20 @@ import com.profilescraper.service.ScraperService;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.H3;
+import com.vaadin.flow.component.html.Hr;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.upload.Upload;
+import com.vaadin.flow.component.upload.receivers.MultiFileMemoryBuffer;
 import com.vaadin.flow.component.progressbar.ProgressBar;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
+import com.vaadin.flow.component.orderedlayout.FlexComponent;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.textfield.IntegerField;
+import com.vaadin.flow.component.textfield.NumberField;
 import com.vaadin.flow.component.textfield.PasswordField;
-import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.renderer.ComponentRenderer;
 import com.vaadin.flow.router.Route;
@@ -42,9 +50,12 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.stream.Collectors;
 
 @ViewController("MainView")
 @ViewDescriptor("main_view.xml")
@@ -66,8 +77,9 @@ public class MainView extends StandardView {
     @Autowired @Qualifier("scraperExecutor") private Executor scraperExecutor;
 
     // ── View components injected from main_view.xml ──────────────────────────
-    @ViewComponent private TextArea        jobDescriptionField;
-    @ViewComponent private VerticalLayout  portalSelectionSection;   // mount point
+    @ViewComponent private VerticalLayout  criteriaSection;          // mount point for search fields
+    @ViewComponent private VerticalLayout  exclusionSection;         // mount point for exclusion upload
+    @ViewComponent private VerticalLayout  portalSelectionSection;   // mount point for portal/credentials
     @ViewComponent private Button          searchBtn;
     @ViewComponent private Button          cancelBtn;
     @ViewComponent private Button          clearBtn;
@@ -79,11 +91,25 @@ public class MainView extends StandardView {
     @ViewComponent private H3              resultsPanelTitle;
     @ViewComponent private VerticalLayout  gridContainer;
 
-    // ── Components added programmatically ────────────────────────────────────
+    // ── Criteria fields (added programmatically into criteriaSection) ────────
+    private TextField    keywordsField;
+    private TextField    skillsField;
+    private IntegerField minExpField;
+    private IntegerField maxExpField;
+    private TextField    locationField;
+    private NumberField  minSalaryField;
+    private NumberField  maxSalaryField;
+
+    // ── Portal / credentials (added programmatically) ─────────────────────
     private ComboBox<JobPortal>  portalComboBox;
     private VerticalLayout       credentialsSection;
     private TextField            usernameField;
     private PasswordField        passwordField;
+
+    // ── Exclusion list state ──────────────────────────────────────────────────
+    private Set<String> excludedKeys   = new HashSet<>();
+    private Span        exclusionBadge;   // shows "X candidates excluded"
+    private Button      clearExclusionBtn;
 
     // ── Runtime state ─────────────────────────────────────────────────────────
     private Grid<CandidateProfile>                 candidatesGrid;
@@ -96,6 +122,8 @@ public class MainView extends StandardView {
 
     @Subscribe
     public void onInit(InitEvent event) {
+        initCriteriaSection();
+        initExclusionSection();
         initPortalSection();
         initGrid();
         initButtons();
@@ -104,6 +132,173 @@ public class MainView extends StandardView {
     // ─────────────────────────────────────────────────────────────────────────
     //  Initialisation helpers
     // ─────────────────────────────────────────────────────────────────────────
+
+    private void initCriteriaSection() {
+
+        // ── Row 1: Keywords ───────────────────────────────────────────────────
+        keywordsField = new TextField("Keywords / Role");
+        keywordsField.setWidth("100%");
+        keywordsField.setPlaceholder("e.g., Senior Java Developer, React Frontend, Data Scientist");
+        keywordsField.setClearButtonVisible(true);
+        keywordsField.setHelperText("Job title or role — used as the primary search term");
+
+        // ── Row 2: Skills ─────────────────────────────────────────────────────
+        skillsField = new TextField("Skills");
+        skillsField.setWidth("100%");
+        skillsField.setPlaceholder("e.g., Spring Boot, Kafka, Docker, AWS, React");
+        skillsField.setClearButtonVisible(true);
+        skillsField.setHelperText("Comma-separated technical or domain skills");
+
+        // ── Row 3: Experience (min + max) + Location ──────────────────────────
+        minExpField = new IntegerField("Min Experience (Yrs)");
+        minExpField.setMin(0);
+        minExpField.setMax(50);
+        minExpField.setStepButtonsVisible(true);
+        minExpField.setPlaceholder("0");
+        minExpField.setWidth("180px");
+
+        maxExpField = new IntegerField("Max Experience (Yrs)");
+        maxExpField.setMin(0);
+        maxExpField.setMax(50);
+        maxExpField.setStepButtonsVisible(true);
+        maxExpField.setPlaceholder("Any");
+        maxExpField.setWidth("180px");
+
+        locationField = new TextField("Current Location");
+        locationField.setPlaceholder("e.g., Bangalore, Mumbai, Delhi NCR");
+        locationField.setClearButtonVisible(true);
+        locationField.setWidth("100%");
+
+        HorizontalLayout expRow = new HorizontalLayout(minExpField, maxExpField, locationField);
+        expRow.setWidth("100%");
+        expRow.setAlignItems(FlexComponent.Alignment.END);
+        expRow.expand(locationField);
+
+        // ── Row 4: Salary range ───────────────────────────────────────────────
+        minSalaryField = new NumberField("Min Salary (Lacs INR)");
+        minSalaryField.setMin(0);
+        minSalaryField.setStep(0.5);
+        minSalaryField.setStepButtonsVisible(true);
+        minSalaryField.setPlaceholder("e.g., 10");
+        minSalaryField.setWidth("220px");
+        minSalaryField.setSuffixComponent(new Span("L"));
+
+        maxSalaryField = new NumberField("Max Salary (Lacs INR)");
+        maxSalaryField.setMin(0);
+        maxSalaryField.setStep(0.5);
+        maxSalaryField.setStepButtonsVisible(true);
+        maxSalaryField.setPlaceholder("e.g., 30");
+        maxSalaryField.setWidth("220px");
+        maxSalaryField.setSuffixComponent(new Span("L"));
+
+        HorizontalLayout salaryRow = new HorizontalLayout(minSalaryField, maxSalaryField);
+        salaryRow.setWidth("100%");
+        salaryRow.setAlignItems(FlexComponent.Alignment.END);
+
+        criteriaSection.add(keywordsField, skillsField, expRow, salaryRow);
+    }
+
+    private void initExclusionSection() {
+
+        // ── Divider ───────────────────────────────────────────────────────────
+        Hr divider = new Hr();
+        divider.getStyle().set("margin", "8px 0 4px 0").set("border-color", "#E5E7EB");
+
+        // ── Label ─────────────────────────────────────────────────────────────
+        Span sectionLabel = new Span("Exclude Previously Found Candidates (Optional)");
+        sectionLabel.getStyle()
+                .set("font-size", "13px")
+                .set("font-weight", "600")
+                .set("color", "#374151");
+
+        Span helperText = new Span(
+                "Upload a previous search export (.xlsx) — candidates already in that list "
+                + "will be skipped so you only see fresh results.");
+        helperText.getStyle()
+                .set("font-size", "12px")
+                .set("color", "#6B7280")
+                .set("display", "block")
+                .set("margin-bottom", "6px");
+
+        // ── Upload component ──────────────────────────────────────────────────
+        MultiFileMemoryBuffer buffer = new MultiFileMemoryBuffer();
+        Upload upload = new Upload(buffer);
+        upload.setAcceptedFileTypes(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".xlsx");
+        upload.setMaxFiles(1);
+        upload.setMaxFileSize(20 * 1024 * 1024);   // 20 MB limit
+        upload.setDropAllowed(true);
+        upload.getStyle().set("max-width", "480px");
+
+        upload.setUploadButton(new Button("Upload Exclusion List (.xlsx)"));
+        upload.setDropLabel(new Span("or drag & drop here"));
+
+        // ── Status badge ──────────────────────────────────────────────────────
+        exclusionBadge = new Span();
+        exclusionBadge.setVisible(false);
+        exclusionBadge.getStyle()
+                .set("font-size", "12px")
+                .set("font-weight", "600")
+                .set("padding", "3px 10px")
+                .set("border-radius", "12px")
+                .set("background", "#FEF3C7")
+                .set("color", "#92400E");
+
+        // ── Clear exclusion list button ────────────────────────────────────────
+        clearExclusionBtn = new Button("Clear Exclusion List", e -> {
+            excludedKeys.clear();
+            upload.clearFileList();
+            exclusionBadge.setVisible(false);
+            clearExclusionBtn.setVisible(false);
+            notifications.create("Exclusion list cleared.")
+                    .withType(Notifications.Type.DEFAULT).show();
+        });
+        clearExclusionBtn.getThemeNames().add("tertiary error small");
+        clearExclusionBtn.setVisible(false);
+
+        HorizontalLayout statusRow = new HorizontalLayout(exclusionBadge, clearExclusionBtn);
+        statusRow.setAlignItems(FlexComponent.Alignment.CENTER);
+        statusRow.setSpacing(true);
+
+        // ── Upload success handler ────────────────────────────────────────────
+        upload.addSucceededListener(event -> {
+            try {
+                Set<String> keys = ExclusionListParser.parse(
+                        buffer.getInputStream(event.getFileName()));
+                excludedKeys = keys;
+                int count = countExcludedCandidates(keys);
+                exclusionBadge.setText("⛔  " + count + " candidate(s) will be excluded");
+                exclusionBadge.setVisible(true);
+                clearExclusionBtn.setVisible(true);
+                logger.info("Exclusion list loaded: {} unique keys from '{}'",
+                        keys.size(), event.getFileName());
+                notifications.create(
+                        "Exclusion list loaded — " + count + " candidate(s) will be skipped.")
+                        .withType(Notifications.Type.SUCCESS).show();
+            } catch (Exception ex) {
+                logger.error("Failed to parse exclusion list", ex);
+                notifications.create(
+                        "Could not read the file: " + ex.getMessage()
+                        + ". Make sure it is a valid exported .xlsx file.")
+                        .withType(Notifications.Type.ERROR).show();
+            }
+        });
+
+        upload.addFailedListener(event ->
+            notifications.create("Upload failed: " + event.getReason().getMessage())
+                    .withType(Notifications.Type.ERROR).show()
+        );
+
+        exclusionSection.add(divider, sectionLabel, helperText, upload, statusRow);
+    }
+
+    /** Approximate candidate count from key set size (each candidate adds up to 2 keys). */
+    private int countExcludedCandidates(Set<String> keys) {
+        // Each candidate contributes at most 2 keys (URL + name|company).
+        // Divide by 2 and round up as a rough count.
+        return (int) Math.ceil(keys.size() / 2.0);
+    }
 
     private void initPortalSection() {
 
@@ -281,19 +476,40 @@ public class MainView extends StandardView {
     // ─────────────────────────────────────────────────────────────────────────
 
     private void onSearch() {
-        String jobDescription = jobDescriptionField.getValue();
 
-        if (jobDescription == null || jobDescription.isBlank()) {
-            jobDescriptionField.setInvalid(true);
-            jobDescriptionField.setErrorMessage(
-                    "Please enter a job description before searching.");
+        // ── Build and validate SearchCriteria ─────────────────────────────────
+        SearchCriteria criteria = buildCriteria();
+
+        if (criteria.isEmpty()) {
+            keywordsField.setInvalid(true);
+            keywordsField.setErrorMessage("Please enter at least a keyword/role or skill.");
             return;
         }
-        jobDescriptionField.setInvalid(false);
+        keywordsField.setInvalid(false);
 
-        JobPortal portal   = portalComboBox.getValue();
-        String    uname    = usernameField.getValue();
-        String    pass     = passwordField.getValue();
+        // Validate experience range
+        Integer minExp = criteria.getMinExperience();
+        Integer maxExp = criteria.getMaxExperience();
+        if (minExp != null && maxExp != null && minExp > maxExp) {
+            minExpField.setInvalid(true);
+            minExpField.setErrorMessage("Min experience cannot exceed Max experience.");
+            return;
+        }
+        minExpField.setInvalid(false);
+
+        // Validate salary range
+        Double minSal = criteria.getMinSalaryLacs();
+        Double maxSal = criteria.getMaxSalaryLacs();
+        if (minSal != null && maxSal != null && minSal > maxSal) {
+            minSalaryField.setInvalid(true);
+            minSalaryField.setErrorMessage("Min salary cannot exceed Max salary.");
+            return;
+        }
+        minSalaryField.setInvalid(false);
+
+        JobPortal portal = portalComboBox.getValue();
+        String    uname  = usernameField.getValue();
+        String    pass   = passwordField.getValue();
 
         // Validate credentials when a portal is selected
         if (portal != null) {
@@ -313,6 +529,7 @@ public class MainView extends StandardView {
             passwordField.setInvalid(false);
         }
 
+        String query = criteria.toQueryString();
         setSearchInProgress(true);
 
         if (portal != null) {
@@ -325,16 +542,15 @@ public class MainView extends StandardView {
                     : "Logging into " + portal.getDisplayName()
                       + " and searching for candidates… This may take a few minutes.";
             setStatus(portalMsg);
-            logger.info("Starting portal search on {} for: {}", portal, jobDescription);
+            logger.info("Starting portal search on {} for: {}", portal, query);
 
-            final String finalUname = uname;
-            final String finalPass  = pass;
+            final String    finalUname  = uname;
+            final String    finalPass   = pass;
             final JobPortal finalPortal = portal;
 
             currentSearch = CompletableFuture.supplyAsync(() -> {
                 try {
-                    return scraperService.scrapeProfiles(
-                            jobDescription, finalPortal, finalUname, finalPass);
+                    return scraperService.scrapeProfiles(criteria, finalPortal, finalUname, finalPass);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -342,11 +558,11 @@ public class MainView extends StandardView {
 
         } else {
             setStatus("Searching for candidates using AI… This may take a few minutes.");
-            logger.info("Starting AI search for: {}", jobDescription);
+            logger.info("Starting AI search for: {}", query);
 
             currentSearch = CompletableFuture.supplyAsync(() -> {
                 try {
-                    return scraperService.scrapeProfiles(jobDescription);
+                    return scraperService.scrapeProfiles(criteria);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -356,26 +572,45 @@ public class MainView extends StandardView {
         // ── Common completion handler ─────────────────────────────────────────
         currentSearch.thenAccept(profiles ->
                 getUI().ifPresent(ui -> ui.access(() -> {
-                    currentProfiles = profiles;
+
+                    // Apply exclusion list filter
+                    int rawCount = profiles.size();
+                    List<CandidateProfile> filtered = profiles.stream()
+                            .filter(p -> !ExclusionListParser.isExcluded(p, excludedKeys))
+                            .collect(Collectors.toList());
+                    int excludedCount = rawCount - filtered.size();
+
+                    currentProfiles = filtered;
                     candidatesGrid.setItems(currentProfiles);
                     resultsPanelTitle.setText(
-                            String.format("Results (%d candidates found)", profiles.size()));
-                    updateSummaryBadge(profiles);
+                            String.format("Results (%d candidates found)", filtered.size()));
+                    updateSummaryBadge(filtered);
                     setSearchInProgress(false);
-                    setStatus(String.format("Done — found %d candidate(s).", profiles.size()));
 
-                    boolean hasResults = !profiles.isEmpty();
+                    String statusMsg = excludedCount > 0
+                            ? String.format("Done — %d new candidate(s) found (%d excluded as previously seen).",
+                                    filtered.size(), excludedCount)
+                            : String.format("Done — found %d candidate(s).", filtered.size());
+                    setStatus(statusMsg);
+
+                    boolean hasResults = !filtered.isEmpty();
                     exportBtn.setEnabled(hasResults);
                     exportHint.setVisible(!hasResults);
 
                     if (!hasResults) {
-                        notifications.create(
-                                "No candidates matched your criteria. Try broadening the description.")
+                        String msg = excludedCount > 0
+                                ? "All " + excludedCount + " result(s) were already in your exclusion list. "
+                                  + "Try different criteria or clear the exclusion list."
+                                : "No candidates matched your criteria. Try broadening the search.";
+                        notifications.create(msg)
                                 .withType(Notifications.Type.DEFAULT).show();
                     } else {
-                        notifications.create(String.format(
-                                "Found %d candidate(s)! Click 'Export to Excel' to download.",
-                                profiles.size()))
+                        String msg = excludedCount > 0
+                                ? String.format("Found %d new candidate(s) (%d excluded). Click 'Export to Excel' to download.",
+                                        filtered.size(), excludedCount)
+                                : String.format("Found %d candidate(s)! Click 'Export to Excel' to download.",
+                                        filtered.size());
+                        notifications.create(msg)
                                 .withType(Notifications.Type.SUCCESS).show();
                     }
                 }))
@@ -405,20 +640,29 @@ public class MainView extends StandardView {
     }
 
     private void onClear() {
-        jobDescriptionField.setValue("");
-        jobDescriptionField.setInvalid(false);
+        // Criteria fields
+        keywordsField.clear();    keywordsField.setInvalid(false);
+        skillsField.clear();
+        minExpField.clear();      minExpField.setInvalid(false);
+        maxExpField.clear();
+        locationField.clear();
+        minSalaryField.clear();   minSalaryField.setInvalid(false);
+        maxSalaryField.clear();
+        // Exclusion list — intentionally kept across clears so the user
+        // doesn't have to re-upload on every new search. Use the dedicated
+        // "Clear Exclusion List" button to reset it.
+        // Portal fields
         portalComboBox.clear();
-        usernameField.clear();
-        passwordField.clear();
-        usernameField.setInvalid(false);
-        passwordField.setInvalid(false);
+        usernameField.clear();    usernameField.setInvalid(false);
+        passwordField.clear();    passwordField.setInvalid(false);
+        // Results
         currentProfiles = new ArrayList<>();
         candidatesGrid.setItems(currentProfiles);
         resultsPanelTitle.setText("Results (0 candidates found)");
         summaryBadge.setVisible(false);
         exportBtn.setEnabled(false);
         exportHint.setVisible(true);
-        setStatus("Ready to search. Enter a job description and click 'Search Candidates'.");
+        setStatus("Ready to search. Fill in the criteria above and click 'Search Candidates'.");
     }
 
     private void onExport() {
@@ -459,13 +703,22 @@ public class MainView extends StandardView {
     // ─────────────────────────────────────────────────────────────────────────
 
     private void setSearchInProgress(boolean inProgress) {
+        // Criteria fields
+        keywordsField.setEnabled(!inProgress);
+        skillsField.setEnabled(!inProgress);
+        minExpField.setEnabled(!inProgress);
+        maxExpField.setEnabled(!inProgress);
+        locationField.setEnabled(!inProgress);
+        minSalaryField.setEnabled(!inProgress);
+        maxSalaryField.setEnabled(!inProgress);
+        // Portal / action
+        portalComboBox.setEnabled(!inProgress);
+        usernameField.setEnabled(!inProgress);
+        passwordField.setEnabled(!inProgress);
         searchBtn.setEnabled(!inProgress);
         clearBtn.setEnabled(!inProgress);
         cancelBtn.setVisible(inProgress);
         searchProgress.setVisible(inProgress);
-        portalComboBox.setEnabled(!inProgress);
-        usernameField.setEnabled(!inProgress);
-        passwordField.setEnabled(!inProgress);
         if (!inProgress) exportBtn.setEnabled(!currentProfiles.isEmpty());
     }
 
@@ -490,20 +743,35 @@ public class MainView extends StandardView {
         summaryBadge.setVisible(true);
     }
 
+    /** Collect all criteria fields into a {@link SearchCriteria} object. */
+    private SearchCriteria buildCriteria() {
+        SearchCriteria c = new SearchCriteria();
+        c.setKeywords(keywordsField.getValue());
+        c.setSkills(skillsField.getValue());
+        c.setMinExperience(minExpField.getValue());
+        c.setMaxExperience(maxExpField.getValue());
+        c.setLocation(locationField.getValue());
+        c.setMinSalaryLacs(minSalaryField.getValue());
+        c.setMaxSalaryLacs(maxSalaryField.getValue());
+        return c;
+    }
+
     private String buildOutputFileName() {
-        String raw     = jobDescriptionField.getValue();
+        // Use keywords (role) as the filename slug; fall back to "search" if empty
+        String raw = keywordsField.getValue();
+        if (raw == null || raw.isBlank()) raw = "search";
+
         String cleaned = raw
                 .replaceAll("[^a-zA-Z0-9 ]", " ")
                 .trim()
                 .replaceAll("\\s+", " ");
         String slug = cleaned
-                .substring(0, Math.min(50, cleaned.length()))  // use cleaned length, not raw length
+                .substring(0, Math.min(50, cleaned.length()))
                 .trim()
                 .toLowerCase()
                 .replaceAll("\\s+", "-");
         String date = LocalDate.now().format(DateTimeFormatter.ISO_DATE);
 
-        // Optionally include portal name in file name
         JobPortal portal = portalComboBox.getValue();
         String portalSuffix = portal != null
                 ? "_" + portal.name().toLowerCase()

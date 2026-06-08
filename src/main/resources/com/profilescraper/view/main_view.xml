@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <view xmlns="http://jmix.io/schema/flowui/view"
-      title="Profile Scraper Agent — AI Recruitment Tool"
-      focusComponent="jobDescriptionField">
+      title="Profile Scraper Agent — AI Recruitment Tool">
 
     <layout>
         <vbox padding="true" spacing="true" width="100%" classNames="main-view-layout">
@@ -15,12 +14,18 @@
             <vbox width="100%" padding="true" spacing="true" classNames="section-panel">
                 <h3 text="Search Parameters"/>
 
-                <textArea id="jobDescriptionField"
-                          label="Job Description / Requirements"
-                          placeholder="e.g., Senior React Developer with 5+ years experience, based in Mumbai, fintech background preferred"
-                          width="100%"
-                          minHeight="120px"
-                          helperText="Be specific: include skills, years of experience, location, and industry"/>
+                <!--
+                    Search criteria fields (Keywords, Skills, Experience, Location, Salary)
+                    are added programmatically in MainView.java → initCriteriaSection().
+                    This vbox acts as the mount point.
+                -->
+                <vbox id="criteriaSection" width="100%" spacing="true"/>
+
+                <!--
+                    Exclusion list upload — added programmatically in MainView.java.
+                    Upload a previous export (.xlsx) to skip already-found candidates.
+                -->
+                <vbox id="exclusionSection" width="100%" spacing="false"/>
 
                 <!--
                     Portal selection + credentials are added programmatically in MainView.java

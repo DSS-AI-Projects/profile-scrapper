@@ -73,12 +73,15 @@ public class LinkedInScraper extends AbstractPortalScraper {
         Files.createDirectories(SESSION_DIR);
         List<CandidateProfile> profiles = new ArrayList<>();
 
+        boolean headless = shouldRunHeadless();
+        logger.info("LinkedIn: launching browser [headless={}]", headless);
+
         try (Playwright playwright = Playwright.create()) {
             BrowserContext context = playwright.chromium().launchPersistentContext(
                     SESSION_DIR,
                     new BrowserType.LaunchPersistentContextOptions()
-                            .setHeadless(false)
-                            .setSlowMo(60)
+                            .setHeadless(headless)
+                            .setSlowMo(headless ? 0 : 60)   // no slowMo needed without a visible UI
                             .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                                     + "AppleWebKit/537.36 (KHTML, like Gecko) "
                                     + "Chrome/120.0.0.0 Safari/537.36")
@@ -228,32 +231,73 @@ public class LinkedInScraper extends AbstractPortalScraper {
             page.waitForTimeout(1_000);
         } catch (Exception ignored) {}
 
-        // ── Strategy 1–4: structural CSS selectors ────────────────────────────────
+        // ── Strategy 1–7: structural CSS selectors (ordered newest → oldest) ────────
+        // LinkedIn renames classes frequently; we try every known variant before
+        // falling back to the JavaScript /in/ link scan.
+
+        // Strategy 1 — 2024-era class name
         List<ElementHandle> cards = page.querySelectorAll("li.reusable-search__result-container");
         if (!cards.isEmpty()) {
             logger.info("LinkedIn: strategy-1 (reusable-search__result-container) → {} cards", cards.size());
             return cardsToProfiles(cards);
         }
 
+        // Strategy 2 — shared entity-result component
         cards = page.querySelectorAll(".entity-result");
         if (!cards.isEmpty()) {
             logger.info("LinkedIn: strategy-2 (entity-result) → {} cards", cards.size());
             return cardsToProfiles(cards);
         }
 
+        // Strategy 3 — chameleon data attribute (2023–2024)
         cards = page.querySelectorAll("[data-chameleon-result-urn]");
         if (!cards.isEmpty()) {
             logger.info("LinkedIn: strategy-3 (chameleon-result-urn) → {} cards", cards.size());
             return cardsToProfiles(cards);
         }
 
+        // Strategy 4 — generic entity-result div variants
         cards = page.querySelectorAll("div[class*='entity-result'], div[class*='search-result__info']");
         if (!cards.isEmpty()) {
             logger.info("LinkedIn: strategy-4 (entity-result div) → {} cards", cards.size());
             return cardsToProfiles(cards);
         }
 
-        // ── Strategy 5: JavaScript /in/ link scan (most robust fallback) ──────────
+        // Strategy 5 — 2025+ search result universal template (data-view-name attribute)
+        cards = page.querySelectorAll("[data-view-name='search-entity-result-universal-template']");
+        if (!cards.isEmpty()) {
+            logger.info("LinkedIn: strategy-5 (data-view-name universal-template) → {} cards", cards.size());
+            return cardsToProfiles(cards);
+        }
+
+        // Strategy 6 — artdeco list items inside the search results container
+        cards = page.querySelectorAll(
+                "ul[class*='reusable-search'] > li, " +
+                "ul[class*='search-results'] > li, " +
+                "div[class*='search-results-container'] li[class*='artdeco-list__item']");
+        if (!cards.isEmpty()) {
+            logger.info("LinkedIn: strategy-6 (artdeco list items) → {} cards", cards.size());
+            return cardsToProfiles(cards);
+        }
+
+        // Strategy 7 — any <li> that contains a /in/ profile link (broadest CSS net)
+        cards = page.querySelectorAll("li:has(a[href*='/in/'])");
+        if (!cards.isEmpty()) {
+            // Filter out nav/sidebar items — keep only list items that look like result cards
+            List<ElementHandle> filtered = cards.stream()
+                    .filter(c -> {
+                        try { return c.querySelector("a[href*='/in/']") != null; }
+                        catch (Exception e) { return false; }
+                    })
+                    .limit(25)
+                    .toList();
+            if (!filtered.isEmpty()) {
+                logger.info("LinkedIn: strategy-7 (li:has /in/ link) → {} cards", filtered.size());
+                return cardsToProfiles(filtered);
+            }
+        }
+
+        // ── Strategy 8: JavaScript /in/ link scan (most robust fallback) ──────────
         logger.info("LinkedIn: no structural selector matched — running JS extraction");
         List<CandidateProfile> jsResults = extractWithJavaScript(page);
         logger.info("LinkedIn: JS extraction → {} profiles", jsResults.size());
@@ -325,8 +369,11 @@ public class LinkedInScraper extends AbstractPortalScraper {
 
     private CandidateProfile extractFromCard(ElementHandle card) {
         CandidateProfile p = new CandidateProfile();
+
+        // ── Name + profile URL ─────────────────────────────────────────────────────
         ElementHandle link = card.querySelector(".entity-result__title-text a");
         if (link == null) link = card.querySelector("a.app-aware-link");
+        if (link == null) link = card.querySelector("a[href*='/in/']");
         if (link != null) {
             String href = link.getAttribute("href");
             if (href != null) p.setProfileUrl(href.split("\\?")[0].trim());
@@ -334,6 +381,24 @@ public class LinkedInScraper extends AbstractPortalScraper {
             String name = span != null ? span.innerText().trim() : link.innerText().trim();
             p.setFullName(cleanName(name));
         }
+
+        // ── Current title (primary subtitle) ──────────────────────────────────────
+        String title = safeText(card, ".entity-result__primary-subtitle");
+        if (title.isBlank()) title = safeText(card, "[class*='primary-subtitle']");
+        if (title.isBlank()) title = safeText(card, "div[class*='t-14'][class*='t-black']");
+        if (!title.isBlank()) p.setCurrentTitle(title);
+
+        // ── Current company (secondary subtitle) ──────────────────────────────────
+        String company = safeText(card, ".entity-result__secondary-subtitle");
+        if (company.isBlank()) company = safeText(card, "[class*='secondary-subtitle']");
+        if (!company.isBlank()) p.setCurrentCompany(company);
+
+        // ── Location (summary line / tertiary text) ────────────────────────────────
+        String location = safeText(card, ".entity-result__summary--2-lines");
+        if (location.isBlank()) location = safeText(card, "[class*='entity-result__summary']");
+        if (location.isBlank()) location = safeText(card, "div[class*='t-12'][class*='t-black--light']");
+        if (!location.isBlank()) p.setLocation(location);
+
         p.setMatchScore(CandidateProfile.MatchScore.MEDIUM);
         return p;
     }
@@ -848,5 +913,35 @@ public class LinkedInScraper extends AbstractPortalScraper {
             } catch (Exception ignored) {}
         }
         return null;
+    }
+
+    /**
+     * Decides whether Playwright should run in headless mode.
+     *
+     * <p>Rules (checked in order):
+     * <ol>
+     *   <li><b>Env override</b> — if {@code PLAYWRIGHT_HEADLESS=true} is set, always headless.</li>
+     *   <li><b>Linux / no display</b> — if the OS is Linux/Unix and the {@code DISPLAY}
+     *       environment variable is absent or blank, a headed browser cannot open a window;
+     *       fall back to headless automatically.</li>
+     *   <li><b>Default</b> — headed mode ({@code false}), which allows the first-time
+     *       manual LinkedIn login and session persistence on developer machines.</li>
+     * </ol>
+     */
+    private static boolean shouldRunHeadless() {
+        // Explicit override — useful for CI or server deployments
+        if ("true".equalsIgnoreCase(System.getenv("PLAYWRIGHT_HEADLESS"))) {
+            return true;
+        }
+        // Linux/Unix server with no X display → headed browser will crash
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("linux") || os.contains("unix")) {
+            String display = System.getenv("DISPLAY");
+            if (display == null || display.isBlank()) {
+                return true;
+            }
+        }
+        // Windows / macOS — run headed so the user can log in and save the session
+        return false;
     }
 }

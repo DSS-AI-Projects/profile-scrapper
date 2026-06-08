@@ -2,6 +2,7 @@ package com.profilescraper.service;
 
 import com.profilescraper.ProfileScraperAgent;
 import com.profilescraper.model.CandidateProfile;
+import com.profilescraper.model.SearchCriteria;
 import com.profilescraper.scraper.JobPortal;
 import com.profilescraper.scraper.PortalScraperFactory;
 import org.slf4j.Logger;
@@ -35,7 +36,17 @@ public class ScraperService {
 
     /**
      * Use Gemini 2.0 Flash with Google Search grounding to find candidates.
-     * No portal login is required.
+     * The {@link SearchCriteria} is composed into a query string before being
+     * sent to the AI agent.
+     */
+    public List<CandidateProfile> scrapeProfiles(SearchCriteria criteria) throws Exception {
+        String query = criteria.toQueryString();
+        logger.info("AI search for: {}", query);
+        return agent.scrapeProfiles(query);
+    }
+
+    /**
+     * Convenience overload — accepts a raw query string directly (used by CLI).
      */
     public List<CandidateProfile> scrapeProfiles(String jobDescription) throws Exception {
         logger.info("AI search for: {}", jobDescription);
@@ -46,13 +57,25 @@ public class ScraperService {
 
     /**
      * Log into the specified portal with the supplied credentials and scrape
-     * candidate profiles matching the job description.
+     * candidate profiles matching the structured search criteria.
      *
-     * @param jobDescription natural-language job requirement
-     * @param portal         the portal to target
-     * @param username       portal login e-mail or username
-     * @param password       portal password
-     * @return list of candidate profiles found (may be empty)
+     * @param criteria  structured search criteria from the UI form
+     * @param portal    the portal to target
+     * @param username  portal login e-mail / username (or SerpAPI key)
+     * @param password  portal password (empty for API-key-only portals)
+     */
+    public List<CandidateProfile> scrapeProfiles(SearchCriteria criteria,
+                                                  JobPortal portal,
+                                                  String username,
+                                                  String password) throws Exception {
+        String query = criteria.toQueryString();
+        logger.info("Portal search on {} for: {}", portal.getDisplayName(), query);
+        return PortalScraperFactory.get(portal)
+                .scrapeProfiles(query, username, password);
+    }
+
+    /**
+     * Convenience overload — accepts a raw query string directly (used by CLI).
      */
     public List<CandidateProfile> scrapeProfiles(String jobDescription,
                                                   JobPortal portal,
