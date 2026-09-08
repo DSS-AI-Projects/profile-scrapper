@@ -227,3 +227,5 @@ mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="in
 ## License
 
 Internal tool — not licensed for redistribution.
+
+<!-- TEST EDIT: added by jira2pullreq to validate the push-branch feature end-to-end. Safe to delete/ignore; not real product work. -->
