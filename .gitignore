@@ -27,6 +27,7 @@ package-lock.json
 # ===========================
 src/main/dev-bundle/
 src/main/bundles/
+src/main/frontend/generated/
 webpack.config.js
 webpack.generated.js
 vite.config.ts

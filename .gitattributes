@@ -1,0 +1,4 @@
+# Store text files with LF in the repository and check them out with native
+# line endings. Without this, Windows checkouts commit CRLF back and every file
+# a build touches shows up as modified.
+* text=auto
