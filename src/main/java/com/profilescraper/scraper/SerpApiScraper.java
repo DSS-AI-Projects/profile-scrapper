@@ -43,7 +43,30 @@ public class SerpApiScraper extends AbstractPortalScraper {
     private static final String      SERPAPI_ENDPOINT  = "https://serpapi.com/search.json";
     private static final int         RESULTS_PER_PAGE  = 10;  // Google returns 10 per page
     private static final int         MAX_PAGES         = 3;   // 3 API calls → up to 30 results
+    private static final int         DEFAULT_MAX_RESULTS = 10; // KAN-27: hard cap on profiles returned
+    /**
+     * Hard cap on the number of profiles returned by this scraper (KAN-27).
+     * Defaults to {@value #DEFAULT_MAX_RESULTS}; can be overridden without a code
+     * change via the optional {@code SERP_API_MAX_RESULTS} environment variable.
+     */
+    private static final int         MAX_RESULTS       = readMaxResults();
     private static final ObjectMapper MAPPER           = new ObjectMapper();
+
+    /**
+     * Reads the optional {@code SERP_API_MAX_RESULTS} env-var override, parsing it
+     * defensively. Falls back to {@link #DEFAULT_MAX_RESULTS} when the variable is
+     * absent, blank, non-numeric, or not a positive integer.
+     */
+    private static int readMaxResults() {
+        String raw = System.getenv("SERP_API_MAX_RESULTS");
+        if (raw == null || raw.isBlank()) return DEFAULT_MAX_RESULTS;
+        try {
+            int parsed = Integer.parseInt(raw.trim());
+            return parsed > 0 ? parsed : DEFAULT_MAX_RESULTS;
+        } catch (NumberFormatException e) {
+            return DEFAULT_MAX_RESULTS;
+        }
+    }
 
     // ── Precompiled regex patterns ────────────────────────────────────────────────
 
@@ -123,6 +146,14 @@ public class SerpApiScraper extends AbstractPortalScraper {
                 break;   // Google has no more results for this query
             }
 
+            // KAN-27: stop paginating once the result cap is reached to avoid
+            // wasting further SerpAPI calls on results that will be truncated.
+            if (profiles.size() >= MAX_RESULTS) {
+                logger.info("SerpAPI: reached result cap of {} — stopping pagination",
+                        MAX_RESULTS);
+                break;
+            }
+
             // Brief pause between API calls to be a good citizen
             if (page < MAX_PAGES - 1) {
                 try { Thread.sleep(400); }
@@ -130,8 +161,23 @@ public class SerpApiScraper extends AbstractPortalScraper {
             }
         }
 
-        logger.info("SerpAPI: {} profile(s) extracted in total", profiles.size());
-        return profiles;
+        List<CandidateProfile> limited = applyResultLimit(profiles);
+        logger.info("SerpAPI: {} profile(s) extracted, returning {} (cap={})",
+                profiles.size(), limited.size(), MAX_RESULTS);
+        return limited;
+    }
+
+    /**
+     * Enforces the {@link #MAX_RESULTS} cap (KAN-27), preserving insertion order.
+     * Returns a truncated copy of the first {@code MAX_RESULTS} profiles when the
+     * input exceeds the cap, or the input list unchanged when it is at or below it.
+     *
+     * <p>Package-private so it can be unit-tested directly without touching the
+     * network-calling HTTP path.
+     */
+    List<CandidateProfile> applyResultLimit(List<CandidateProfile> profiles) {
+        if (profiles == null || profiles.size() <= MAX_RESULTS) return profiles;
+        return new ArrayList<>(profiles.subList(0, MAX_RESULTS));
     }
 
     // ─── Query builder ────────────────────────────────────────────────────────────

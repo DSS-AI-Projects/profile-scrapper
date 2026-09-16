@@ -40,6 +40,32 @@ public class ProfileScraperAgent {
                                                 + "/v1beta/models/gemini-2.0-flash:generateContent";
     private static final int    MAX_OUTPUT_TOKENS = 8192;
 
+    private static final int    DEFAULT_MAX_RESULTS = 10; // KAN-27: hard cap on profiles returned
+    /**
+     * Hard cap on the number of profiles returned by the AI search (KAN-27).
+     * Defaults to {@value #DEFAULT_MAX_RESULTS}; can be overridden without a code
+     * change via the optional {@code SERP_API_MAX_RESULTS} environment variable
+     * (shared with {@link com.profilescraper.scraper.SerpApiScraper} so both LinkedIn
+     * discovery paths honour the same limit).
+     */
+    private static final int    MAX_RESULTS         = readMaxResults();
+
+    /**
+     * Reads the optional {@code SERP_API_MAX_RESULTS} env-var override, parsing it
+     * defensively. Falls back to {@link #DEFAULT_MAX_RESULTS} when the variable is
+     * absent, blank, non-numeric, or not a positive integer.
+     */
+    private static int readMaxResults() {
+        String raw = System.getenv("SERP_API_MAX_RESULTS");
+        if (raw == null || raw.isBlank()) return DEFAULT_MAX_RESULTS;
+        try {
+            int parsed = Integer.parseInt(raw.trim());
+            return parsed > 0 ? parsed : DEFAULT_MAX_RESULTS;
+        } catch (NumberFormatException e) {
+            return DEFAULT_MAX_RESULTS;
+        }
+    }
+
     private final String     apiKey;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -80,12 +106,28 @@ public class ProfileScraperAgent {
         System.out.println(" Parsing results...");
 
         List<CandidateProfile> profiles = parseProfiles(responseText);
+        List<CandidateProfile> limited  = applyResultLimit(profiles);
 
-        logger.info("Scraping complete. Found {} candidates.", profiles.size());
-        System.out.println(" Found " + profiles.size() + " candidates.");
+        logger.info("Scraping complete. Found {} candidates, returning {} (cap={}).",
+                profiles.size(), limited.size(), MAX_RESULTS);
+        System.out.println(" Found " + limited.size() + " candidates.");
         System.out.println("=".repeat(70) + "\n");
 
-        return profiles;
+        return limited;
+    }
+
+    /**
+     * Enforces the {@link #MAX_RESULTS} cap (KAN-27), preserving order. Returns a
+     * truncated copy of the first {@code MAX_RESULTS} profiles when the input
+     * exceeds the cap, or the input list unchanged when it is at or below it.
+     *
+     * <p>Package-private and static so unit tests can exercise it without constructing
+     * an agent — the constructor builds an {@link HttpClient}, which needs a working
+     * NIO selector and would otherwise drag a network dependency into a pure list test.
+     */
+    static List<CandidateProfile> applyResultLimit(List<CandidateProfile> profiles) {
+        if (profiles == null || profiles.size() <= MAX_RESULTS) return profiles;
+        return new ArrayList<>(profiles.subList(0, MAX_RESULTS));
     }
 
     // ─── Gemini API call ─────────────────────────────────────────────────────────
