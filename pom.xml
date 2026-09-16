@@ -137,15 +137,36 @@
             <artifactId>janino</artifactId>
         </dependency>
 
+        <!-- ══════════════════════════════════════════════════════════════
+             Testing — JUnit 5 (Jupiter). This pom has no parent POM to
+             supply Spring Boot test defaults, so the version is explicit.
+             ══════════════════════════════════════════════════════════════ -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
         <plugins>
 
+            <!-- Surefire — runs the JUnit 5 tests under src/test/java.
+                 Explicit because this pom has no Spring Boot parent to supply
+                 a managed surefire version with JUnit Platform support. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
+
             <!-- Spring Boot fat JAR -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>3.5.11</version>
                 <configuration>
                     <mainClass>com.profilescraper.ProfileScraperApplication</mainClass>
                 </configuration>
@@ -161,6 +182,7 @@
             <plugin>
                 <groupId>com.vaadin</groupId>
                 <artifactId>vaadin-maven-plugin</artifactId>
+                <version>24.9.12</version>
                 <executions>
                     <execution>
                         <goals>
