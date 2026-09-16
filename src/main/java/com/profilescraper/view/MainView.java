@@ -9,6 +9,7 @@ import com.profilescraper.service.ScraperService;
 // ── Vaadin Flow components ────────────────────────────────────────────────────
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.html.Anchor;
+import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.progressbar.ProgressBar;
@@ -39,6 +40,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -66,6 +68,7 @@ public class MainView extends StandardView {
     @Autowired @Qualifier("scraperExecutor") private Executor scraperExecutor;
 
     // ── View components injected from main_view.xml ──────────────────────────
+    @ViewComponent private H2              pageHeading;
     @ViewComponent private TextArea        jobDescriptionField;
     @ViewComponent private VerticalLayout  portalSelectionSection;   // mount point
     @ViewComponent private Button          searchBtn;
@@ -96,6 +99,7 @@ public class MainView extends StandardView {
 
     @Subscribe
     public void onInit(InitEvent event) {
+        initHeading();
         initPortalSection();
         initGrid();
         initButtons();
@@ -104,6 +108,13 @@ public class MainView extends StandardView {
     // ─────────────────────────────────────────────────────────────────────────
     //  Initialisation helpers
     // ─────────────────────────────────────────────────────────────────────────
+
+    private void initHeading() {
+        // The page heading displays the current date and time when the view loads.
+        DateTimeFormatter formatter =
+                DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy HH:mm:ss");
+        pageHeading.setText(LocalDateTime.now().format(formatter));
+    }
 
     private void initPortalSection() {
 
