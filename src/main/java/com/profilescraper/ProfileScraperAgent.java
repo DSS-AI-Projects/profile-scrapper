@@ -9,11 +9,6 @@ import com.profilescraper.model.CandidateProfile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -21,11 +16,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Core AI agent using Google Gemini 2.0 Flash with built-in Google Search grounding.
+ * Core AI agent using Google Gemini (see {@link #MODEL}) with built-in Google Search grounding.
  *
  * <p>Gemini's Google Search tool searches the web automatically inside a single API
  * call — no manual pause_turn loop needed (unlike the previous Claude implementation).
- * Uses Java 11's built-in {@link HttpClient} — no extra SDK dependency required.</p>
+ * Uses the JDK's built-in HTTP support via {@link Http} — no extra SDK dependency required.</p>
  *
  * <p>Free-tier limits (Google AI Studio): 15 req/min, 1 500 req/day.</p>
  *
@@ -36,8 +31,14 @@ public class ProfileScraperAgent {
 
     private static final Logger logger = LoggerFactory.getLogger(ProfileScraperAgent.class);
 
+    /**
+     * {@code gemini-2.0-flash} was retired by Google and now returns HTTP 404 ("This model is no
+     * longer available"), which surfaced in the UI as a failed search. This is the replacement
+     * Google's own error response names.
+     */
+    private static final String MODEL           = "gemini-3.6-flash";
     private static final String API_URL         = "https://generativelanguage.googleapis.com"
-                                                + "/v1beta/models/gemini-2.0-flash:generateContent";
+                                                + "/v1beta/models/" + MODEL + ":generateContent";
     private static final int    MAX_OUTPUT_TOKENS = 8192;
 
     private static final int    DEFAULT_MAX_RESULTS = 20; // KAN-27: hard cap on profiles returned
@@ -66,16 +67,21 @@ public class ProfileScraperAgent {
         }
     }
 
+    private static final int CONNECT_TIMEOUT_MS = 30_000;
+
+    /**
+     * Grounded Google Search across several job sites routinely runs past three minutes, which
+     * surfaced as {@code request timed out} in the UI. Matches the 2–5 minute search duration
+     * the README documents.
+     */
+    private static final int READ_TIMEOUT_MS = 300_000;
+
     private final String     apiKey;
-    private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
     /** Spring-managed constructor — receives API key via DI. */
     public ProfileScraperAgent(String apiKey) {
         this.apiKey      = apiKey;
-        this.httpClient  = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
-                .build();
         this.objectMapper = new ObjectMapper();
     }
 
@@ -83,6 +89,7 @@ public class ProfileScraperAgent {
     public ProfileScraperAgent() {
         this(Optional.ofNullable(System.getenv("GEMINI_API_KEY")).orElse(""));
     }
+
 
     // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -100,12 +107,12 @@ public class ProfileScraperAgent {
      */
     public List<CandidateProfile> scrapeProfiles(String jobDescription, String location)
             throws Exception {
-        logger.info("=== Profile Scraper Agent starting (Gemini 2.0 Flash) ===");
+        logger.info("=== Profile Scraper Agent starting ({}) ===", MODEL);
         logger.info("Job description: {}", jobDescription);
         logger.info("Location constraint: {}", location == null || location.isBlank() ? "(none)" : location);
 
         System.out.println("\n" + "=".repeat(70));
-        System.out.println(" Profile Scraper Agent — Powered by Gemini 2.0 Flash");
+        System.out.println(" Profile Scraper Agent — Powered by " + MODEL);
         System.out.println("=".repeat(70));
         System.out.println(" Searching LinkedIn, Naukri, Indeed, Shine, Monster...");
         System.out.println(" Please wait — this may take a minute.\n");
@@ -140,9 +147,8 @@ public class ProfileScraperAgent {
      * truncated copy of the first {@code MAX_RESULTS} profiles when the input
      * exceeds the cap, or the input list unchanged when it is at or below it.
      *
-     * <p>Package-private and static so unit tests can exercise it without constructing
-     * an agent — the constructor builds an {@link HttpClient}, which needs a working
-     * NIO selector and would otherwise drag a network dependency into a pure list test.
+     * <p>Package-private and static so unit tests can exercise it without constructing an
+     * agent, keeping a pure list test free of any network dependency.
      */
     static List<CandidateProfile> applyResultLimit(List<CandidateProfile> profiles) {
         if (profiles == null || profiles.size() <= MAX_RESULTS) return profiles;
@@ -185,20 +191,17 @@ public class ProfileScraperAgent {
                 requestJson.substring(0, Math.min(300, requestJson.length())));
 
         // ── HTTP POST ─────────────────────────────────────────────────────────────
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(API_URL + "?key=" + apiKey))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(requestJson))
-                .timeout(Duration.ofSeconds(300))
-                .build();
+        Http.Response response = Http.post(
+                API_URL + "?key=" + apiKey,
+                "application/json",
+                requestJson,
+                CONNECT_TIMEOUT_MS,
+                READ_TIMEOUT_MS);
 
-        HttpResponse<String> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        if (response.statusCode() != 200) {
-            logger.error("Gemini API error {}: {}", response.statusCode(), response.body());
+        if (!response.isSuccess()) {
+            logger.error("Gemini API error {}: {}", response.status(), response.body());
             throw new RuntimeException(
-                    "Gemini API returned " + response.statusCode() + ": " + response.body());
+                    "Gemini API returned " + response.status() + ": " + response.body());
         }
 
         return extractText(response.body());

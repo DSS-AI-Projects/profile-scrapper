@@ -92,7 +92,7 @@
              Business / AI layer
              ══════════════════════════════════════════════════════════════ -->
 
-        <!-- Gemini 2.0 Flash — uses Java 11 HttpClient (built-in, no extra SDK needed) -->
+        <!-- Gemini — plain HttpURLConnection via com.profilescraper.Http, no extra SDK needed -->
 
         <!-- ══════════════════════════════════════════════════════════════
              Playwright — browser automation for portal scraping

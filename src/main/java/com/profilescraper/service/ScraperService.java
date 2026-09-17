@@ -15,7 +15,7 @@ import java.util.List;
 /**
  * Spring Service that routes candidate-scraping requests to either:
  * <ul>
- *   <li>The AI-powered {@link ProfileScraperAgent} (Gemini 2.0 Flash + Google Search) when
+ *   <li>The AI-powered {@link ProfileScraperAgent} (Gemini + Google Search) when
  *       no portal is specified.</li>
  *   <li>A Playwright-based {@link com.profilescraper.scraper.PortalScraper} when the user
  *       picks a specific portal and supplies their credentials.</li>
@@ -35,7 +35,7 @@ public class ScraperService {
     // ─── AI / Gemini search (no portal login) ────────────────────────────────────
 
     /**
-     * Use Gemini 2.0 Flash with Google Search grounding to find candidates.
+     * Use Gemini with Google Search grounding to find candidates.
      * No portal login is required.
      */
     public List<CandidateProfile> scrapeProfiles(String jobDescription) throws Exception {

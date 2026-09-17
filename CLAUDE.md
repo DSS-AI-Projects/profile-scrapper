@@ -1,7 +1,7 @@
 # Profile Scraper Agent
 
 AI-powered recruitment candidate scraper: searches LinkedIn, Naukri, and Indeed (via Playwright
-or SerpAPI), extracts profile data with Gemini 2.0 Flash, and exports it to Excel. Ships with a
+or SerpAPI), extracts profile data with Gemini 3.6 Flash, and exports it to Excel. Ships with a
 JMIX Flow UI (Vaadin 24 + Spring Boot 3) web app and a standalone CLI, sharing the same core
 (`ProfileScraperAgent`).
 
@@ -9,7 +9,7 @@ JMIX Flow UI (Vaadin 24 + Spring Boot 3) web app and a standalone CLI, sharing t
 
 - Java 17, Maven (no wrapper — `mvn` must be on PATH)
 - Spring Boot 3.5.11 + JMIX 2.8 (Flow UI / Vaadin platform 24.9.12, Flow 24.9.13) — web UI
-- Gemini 2.0 Flash (Google AI) via raw `java.net.http.HttpClient` — no SDK dependency
+- Gemini 3.6 Flash (Google AI) via `HttpURLConnection` (`com.profilescraper.Http`) — no SDK dependency
 - Microsoft Playwright 1.44 — portal browser automation (LinkedIn/Naukri/Indeed login scraping)
 - SerpAPI — credential-free LinkedIn discovery via Google Search
 - Apache POI 5.2.5 — Excel export
@@ -20,12 +20,10 @@ JMIX Flow UI (Vaadin 24 + Spring Boot 3) web app and a standalone CLI, sharing t
 - `com.profilescraper.ProfileScraperApplication` — Spring Boot web app (embedded Tomcat, port 8080)
 - `com.profilescraper.Main` — CLI (`java -jar ... "job description"`, or interactive prompt with no args)
 
-Both go through `ProfileScraperAgent`, whose constructor builds an `HttpClient` eagerly — so a
-broken NIO selector (see Known environment issue below) fails at construction, before any
-network call. The two paths differ on a *missing* key: the web app fails at Spring startup
-(`${GEMINI_API_KEY}` placeholder can't resolve → `BeanCreationException` on `scraperService`),
-while the CLI's no-arg constructor defaults the key to `""` and starts fine, failing later at
-the first Gemini call.
+Both go through `ProfileScraperAgent`. The two differ on a *missing* key: the web app fails at
+Spring startup (`${GEMINI_API_KEY}` placeholder can't resolve → `BeanCreationException` on
+`scraperService`), while the CLI's no-arg constructor defaults the key to `""` and starts fine,
+failing later at the first Gemini call.
 
 ## Build & run
 
@@ -102,9 +100,18 @@ noisy diff after any build. Treat changes there as build artifacts, not code rev
     runs slightly ahead). Pinning `24.9.13` builds, but warns on every run. Bump with `jmix.version`.
   - `spring-boot-maven-plugin`, pinned to **`3.5.11`** to match the Spring Boot jmix-bom brings
     in. Unpinned it resolved to `4.1.0` — a major version ahead of the running framework.
-- **`ScraperService`'s constructor builds a `ProfileScraperAgent`/`HttpClient` eagerly** — a
-  missing `GEMINI_API_KEY` or a broken JVM network stack fails Spring context startup
-  (`BeanCreationException` on `scraperService`), not a later HTTP call.
+- **`ScraperService`'s constructor builds a `ProfileScraperAgent` eagerly** — a missing
+  `GEMINI_API_KEY` fails Spring context startup (`BeanCreationException` on `scraperService`),
+  not a later HTTP call.
+- **HTTP goes through `com.profilescraper.Http` (`HttpURLConnection`), never
+  `java.net.http.HttpClient`.** Constructing an `HttpClient` opens an NIO selector, and on hosts
+  where that fails every request dies before it is sent, with no system property to disable the
+  behaviour. These are one-shot request/response calls that use none of what `HttpClient` adds
+  (HTTP/2, async, pooling). Don't reintroduce it.
+- **The Gemini model is pinned** in `ProfileScraperAgent.MODEL` and Google retires models. When
+  one goes, the API returns HTTP 404 `"This model ... is no longer available"` and names the
+  replacement in the message — that is the authoritative source, not a guess. `gemini-2.0-flash`
+  was retired this way and is now `gemini-3.6-flash`.
 - `AbstractPortalScraper` carries the shared Playwright setup for the three login-based
   scrapers; changes there affect LinkedIn, Naukri, and Indeed simultaneously. `SerpApiScraper`
   also extends it but overrides `scrapeProfiles` to use plain HTTP, ignoring the browser path.
@@ -130,23 +137,28 @@ attempt a Unix-domain-socket loopback `connect()` first (`sun.nio.ch.PipeImpl`, 
 configurable via any system property). On this machine that `connect()` fails with
 `java.net.SocketException: Invalid argument`, so **any** Java process that opens an NIO
 `Selector` — including a bare `Selector.open()` with no app code involved — throws
-`IOException: Unable to establish loopback connection`. This blocks both entry points here,
-since `ProfileScraperAgent`'s `HttpClient` construction opens a selector immediately, before any
-network call. Reproduced identically via this session's shell and a native PowerShell process,
-so it's not a sandboxing artifact — most likely AV/EDR/VPN software intercepting Winsock AF_UNIX
-calls. Not fixable from app code or JVM flags; if you hit this, it's a host/IT issue, not a
-regression in this repo.
+`IOException: Unable to establish loopback connection`. Reproduced identically via this session's
+shell and a native PowerShell process, so it's not a sandboxing artifact — most likely AV/EDR/VPN
+software intercepting Winsock AF_UNIX calls. If you hit this, it is a host problem, not a
+regression in this repo. Outbound networking itself is fine: `HttpURLConnection` reaches the
+public internet from this box without trouble.
 
-The build itself is unaffected: `ProfileScraperAgent.applyResultLimit` is `static` precisely so
-`ProfileScraperAgentTest` can exercise the cap without constructing an agent. **Keep it that
-way** — any test that calls `new ProfileScraperAgent(...)` will error out here with
-`Unable to establish loopback connection` before it asserts anything. If a test suddenly goes
-red and the stack bottoms out in `sun.nio.ch.UnixDomainSockets.connect0`, it's this environment
-issue, not the code.
+**To run the app on an affected machine:**
+```bash
+mvn spring-boot:run -Dspring-boot.run.arguments="--server.tomcat.nio2=true"
+```
+`server.tomcat.nio2=true` swaps Tomcat's default NIO connector for NIO2, which uses IOCP on
+Windows rather than a selector (see `AppConfig.nio2Connector`). It is opt-in and does nothing
+when unset, so production is unaffected. Two things opened selectors and both are now handled:
+the app's own HTTP moved off `java.net.http.HttpClient` (see the gotcha above), and this property
+gets Tomcat's connector up. Verified end to end on this box — the app starts, serves `:8080`,
+renders the UI, and reaches the Gemini API.
 
-This is not permanent machine state: the app ran and the tests passed on this box on 2026-07-30,
-and the selector has failed consistently since. Treat it as "currently broken here" and
-re-check rather than assuming.
+The build is unaffected too, but keep `ProfileScraperAgent.applyResultLimit` `static` so
+`ProfileScraperAgentTest` never has to construct an agent for what is a pure list test.
+
+This is not permanent machine state: the selector worked here on 2026-07-30 and has failed
+consistently since. Treat it as "currently broken here" and re-check rather than assuming.
 
 ## Coding conventions observed in this codebase
 

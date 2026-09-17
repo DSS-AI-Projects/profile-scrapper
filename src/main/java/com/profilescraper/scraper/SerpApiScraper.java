@@ -2,15 +2,11 @@ package com.profilescraper.scraper;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.profilescraper.Http;
 import com.profilescraper.model.CandidateProfile;
 
-import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -41,6 +37,8 @@ import java.util.regex.Pattern;
 public class SerpApiScraper extends AbstractPortalScraper {
 
     private static final String      SERPAPI_ENDPOINT  = "https://serpapi.com/search.json";
+    private static final int         CONNECT_TIMEOUT_MS = 15_000;
+    private static final int         READ_TIMEOUT_MS    = 30_000;
     private static final int         RESULTS_PER_PAGE  = 10;  // Google returns 10 per page
     private static final int         MAX_PAGES         = 3;   // 3 API calls → up to 30 results
     private static final int         DEFAULT_MAX_RESULTS = 20; // KAN-27: hard cap on profiles returned
@@ -249,21 +247,10 @@ public class SerpApiScraper extends AbstractPortalScraper {
                 + "&hl=en"
                 + "&api_key=" + apiKey;                   // no gl= → global results
 
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(15))
-                .build();
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(30))
-                .GET()
-                .build();
-
         logger.info("SerpAPI: sending request …");
-        HttpResponse<String> response =
-                client.send(request, HttpResponse.BodyHandlers.ofString());
+        Http.Response response = Http.get(url, CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS);
 
-        if (response.statusCode() != 200) {
+        if (!response.isSuccess()) {
             String body = response.body();
             if (body.contains("out of searches") || body.contains("run out"))
                 throw new Exception(
@@ -271,7 +258,7 @@ public class SerpApiScraper extends AbstractPortalScraper {
             if (body.contains("Invalid API key") || body.contains("invalid api key"))
                 throw new Exception(
                         "Invalid SerpAPI key. Verify at https://serpapi.com/manage-api-key");
-            throw new Exception("SerpAPI returned HTTP " + response.statusCode()
+            throw new Exception("SerpAPI returned HTTP " + response.status()
                     + ": " + body.substring(0, Math.min(300, body.length())));
         }
 

@@ -24,6 +24,20 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Update the Gemini model from `gemini-2.0-flash`, which Google has retired, to
+  `gemini-3.6-flash` — the replacement its 404 response names. Searches were failing with
+  `Gemini API returned 404: This model ... is no longer available`.
+- Replace `java.net.http.HttpClient` with `HttpURLConnection` (`com.profilescraper.Http`)
+  for the Gemini and SerpAPI calls. Constructing an `HttpClient` opens an NIO selector whose
+  wakeup pipe the JDK builds from a Unix-domain-socket loopback connect; where a host's
+  network stack rejects that, every search failed with `UncheckedIOException: Unable to
+  establish loopback connection` before a request was sent, and no system property disables
+  it. These are one-shot request/response calls that used nothing `HttpClient` offers over
+  `HttpURLConnection`.
+- Add an opt-in `server.tomcat.nio2=true` property that serves over Tomcat's NIO2 connector
+  (IOCP on Windows) instead of the selector-based default, so the app can start on hosts
+  affected by the same problem. Does nothing unless set.
+
 - Raise the Gemini request timeout from 180s to 300s. Grounded Google Search with
   a 20–30 profile prompt routinely ran past three minutes, surfacing in the UI as
   `Search failed: java.net.http.HttpTimeoutException: request timed out`. 300s

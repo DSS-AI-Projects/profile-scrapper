@@ -1,13 +1,13 @@
 # Profile Scraper Agent
 
-AI-powered recruitment candidate profile scraper with a web UI and CLI interface. Searches LinkedIn, Naukri, and Indeed using Gemini 2.0 Flash intelligence and exports results to Excel.
+AI-powered recruitment candidate profile scraper with a web UI and CLI interface. Searches LinkedIn, Naukri, and Indeed using Gemini 3.6 Flash intelligence and exports results to Excel.
 
 ---
 
 ## Features
 
 - **Multi-portal search** — LinkedIn (Playwright), Naukri, Indeed, and SerpAPI (credential-free Google Search)
-- **AI-powered extraction** — Gemini 2.0 Flash parses candidate details from raw page content
+- **AI-powered extraction** — Gemini 3.6 Flash parses candidate details from raw page content
 - **Web UI** — JMIX Flow UI (Vaadin 24) with sortable, filterable data grid
 - **CLI mode** — Lightweight terminal interface for scripting and automation
 - **Excel export** — Formatted `.xlsx` with clickable profile links, colour-coded Open to Work status
@@ -22,7 +22,7 @@ AI-powered recruitment candidate profile scraper with a web UI and CLI interface
 |---|---|
 | Language | Java 17 |
 | Web framework | Spring Boot 3 + JMIX 2.8 (Flow UI / Vaadin 24) |
-| AI / parsing | Gemini 2.0 Flash (Google AI) |
+| AI / parsing | Gemini 3.6 Flash (Google AI) |
 | Browser automation | Microsoft Playwright 1.44 |
 | LinkedIn discovery | SerpAPI (Google Search — no login required) |
 | Excel generation | Apache POI 5.2.5 |
