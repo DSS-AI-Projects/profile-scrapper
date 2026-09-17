@@ -42,8 +42,11 @@ public class IndeedScraper extends AbstractPortalScraper {
 
     @Override
     public List<CandidateProfile> scrapeProfiles(String jobDescription,
+                                                  String location,
                                                   String username,
                                                   String password) throws Exception {
+        // Fold the location into the search terms; filtering it out afterwards is too late.
+        jobDescription = SearchTerms.withLocation(jobDescription, location);
         List<CandidateProfile> profiles = new ArrayList<>();
 
         try (Playwright playwright = Playwright.create()) {

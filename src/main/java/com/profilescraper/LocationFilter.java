@@ -7,16 +7,17 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Drops candidates whose location clearly contradicts the requested one.
+ * Parses the UI's Location field and drops candidates that do not match it.
  *
- * <p>Deliberately lenient: a profile is removed only when its location is both present
- * and demonstrably a different place. A profile with no location survives, because
- * "unknown" is not evidence of a mismatch — {@link com.profilescraper.scraper.SerpApiScraper}
- * scrapes location best-effort out of Google snippets and frequently finds none, so
- * dropping blanks would empty the grid rather than narrow it.
+ * <p>Asking for a location means requiring one: a profile survives only if its location is
+ * present and matches. This was lenient at first — blanks were kept on the grounds that
+ * "unknown" is not proof of a mismatch — but in practice roughly half of
+ * {@link com.profilescraper.scraper.SerpApiScraper}'s results carry no location, and keeping
+ * them meant a search for Mumbai returned candidates from Canada, New Jersey and Australia.
+ * An unverifiable profile is not a match; it is just a profile nothing is known about.
  *
- * <p>Static, and deliberately not a Spring bean, so it can be unit-tested without
- * constructing anything that builds an {@code HttpClient}.
+ * <p>Static, and deliberately not a Spring bean, so it can be unit-tested without constructing
+ * anything that builds an HTTP client.
  */
 public final class LocationFilter {
 
@@ -24,42 +25,61 @@ public final class LocationFilter {
     }
 
     /**
-     * Keeps only candidates consistent with {@code requestedLocation}.
+     * The places named in the Location field, in the order given.
      *
-     * @param requestedLocation free text such as {@code "Mumbai"} or {@code "Mumbai, India"}.
-     *                          Only the part before the first comma is matched on, so a
-     *                          trailing country does not widen the filter to every city in
-     *                          it ({@code "Mumbai, India"} must not admit {@code "Bangalore,
-     *                          India"}). Blank disables filtering entirely.
+     * <p>Semicolons separate alternatives, commas narrow a single place. So
+     * {@code "Mumbai, Maharashtra"} is one place, while {@code "Mumbai; Thane"} is two — the
+     * comma cannot mean both without {@code "Mumbai, India"} being read as two countries' worth
+     * of candidates.
+     *
+     * <p>Callers must agree on this parse. The search query and the filter reading the field
+     * differently is exactly how a search for {@code "Mumbai, India only"} ended up asking
+     * Google for that entire string as a literal phrase while filtering on just "Mumbai".
+     *
+     * @return city names as typed (trimmed), or empty when nothing is named
      */
+    public static List<String> cities(String requestedLocation) {
+        if (requestedLocation == null || requestedLocation.isBlank()) return List.of();
+
+        List<String> cities = new ArrayList<>();
+        for (String alternative : requestedLocation.split(";")) {
+            String city = alternative.split(",")[0].trim();
+            if (!city.isEmpty()) cities.add(city);
+        }
+        return cities;
+    }
+
+    /** Keeps only candidates whose stated location matches one of the requested places. */
     public static List<CandidateProfile> apply(List<CandidateProfile> profiles,
                                                String requestedLocation) {
         if (profiles == null || profiles.isEmpty()) return profiles;
 
-        String city = primaryCity(requestedLocation);
-        if (city.isEmpty()) return profiles;
+        List<String> wanted = new ArrayList<>();
+        for (String city : cities(requestedLocation)) {
+            String normalised = normalise(city);
+            if (!normalised.isEmpty()) wanted.add(normalised);
+        }
+        if (wanted.isEmpty()) return profiles;
 
         List<CandidateProfile> kept = new ArrayList<>();
         for (CandidateProfile profile : profiles) {
-            if (matches(profile, city)) kept.add(profile);
+            if (matches(profile, wanted)) kept.add(profile);
         }
         return kept;
     }
 
     /**
-     * True when the profile does not contradict {@code city} — either it names no location
-     * at all, or its location contains the requested city. Substring matching is what lets
-     * "Navi Mumbai" and "Mumbai, Maharashtra, India" both satisfy a request for "Mumbai".
+     * True when the profile states a location containing any requested city. Substring matching
+     * is what lets "Navi Mumbai" and "Mumbai, Maharashtra, India" both satisfy "Mumbai".
      */
-    static boolean matches(CandidateProfile profile, String city) {
+    static boolean matches(CandidateProfile profile, List<String> normalisedCities) {
         String actual = normalise(profile.getLocation());
-        return actual.isEmpty() || actual.contains(city);
-    }
+        if (actual.isEmpty()) return false;
 
-    /** Lower-cased, punctuation-stripped text before the first comma. */
-    static String primaryCity(String requestedLocation) {
-        if (requestedLocation == null) return "";
-        return normalise(requestedLocation.split(",")[0]);
+        for (String city : normalisedCities) {
+            if (actual.contains(city)) return true;
+        }
+        return false;
     }
 
     private static String normalise(String value) {

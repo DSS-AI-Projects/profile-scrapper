@@ -24,10 +24,10 @@
 
                 <textField id="locationField"
                            label="Location (optional)"
-                           placeholder="e.g., Mumbai"
+                           placeholder="e.g., Mumbai; Thane; Pune"
                            width="100%"
                            clearButtonVisible="true"
-                           helperText="When set, results are restricted to this location and candidates listed elsewhere are dropped"/>
+                           helperText="Separate several cities with ';'. Candidates elsewhere, or with no stated location, are dropped. 'Mumbai' already covers 'Navi Mumbai'."/>
 
                 <!--
                     Portal selection + credentials are added programmatically in MainView.java

@@ -72,10 +72,9 @@ public class ScraperService {
     }
 
     /**
-     * Portal scrapers receive the location only as part of the free-text job description, so
-     * the constraint is enforced here on their output instead. Unlike the AI path this runs
-     * after the scraper's own result cap, so a heavily off-location page of results can come
-     * back short.
+     * The location is handed to the scraper so it searches for it, and re-checked here on the
+     * way out because a portal honouring it is not guaranteed. This second pass runs after the
+     * scraper's own result cap, so a heavily off-location page of results can come back short.
      *
      * @param location optional location constraint; blank means no location filtering.
      */
@@ -88,7 +87,7 @@ public class ScraperService {
                 jobDescription, location == null || location.isBlank() ? "any" : location);
 
         List<CandidateProfile> found = PortalScraperFactory.get(portal)
-                .scrapeProfiles(jobDescription, username, password);
+                .scrapeProfiles(jobDescription, location, username, password);
 
         List<CandidateProfile> onLocation = LocationFilter.apply(found, location);
         if (onLocation.size() != found.size()) {

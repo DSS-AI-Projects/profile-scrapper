@@ -59,6 +59,13 @@ public class MainView extends StandardView {
 
     private static final Logger logger = LoggerFactory.getLogger(MainView.class);
 
+    /**
+     * Error notifications default to staying put until dismissed, and the overlay swallows
+     * clicks on the controls beneath it — including the Search button, so a failed search could
+     * not be retried. Give them a close button and an expiry.
+     */
+    private static final int ERROR_NOTIFICATION_DURATION_MS = 12_000;
+
     // ── Spring services ───────────────────────────────────────────────────────
     @Autowired private ScraperService scraperService;
     @Autowired private Notifications  notifications;
@@ -390,7 +397,10 @@ public class MainView extends StandardView {
                 String msg = ex.getCause() != null
                         ? ex.getCause().getMessage() : ex.getMessage();
                 notifications.create("Search failed: " + msg)
-                        .withType(Notifications.Type.ERROR).show();
+                        .withType(Notifications.Type.ERROR)
+                        .withCloseable(true)
+                        .withDuration(ERROR_NOTIFICATION_DURATION_MS)
+                        .show();
                 setStatus("Error: " + msg);
             }));
             return null;
@@ -453,7 +463,10 @@ public class MainView extends StandardView {
         } catch (IOException ex) {
             logger.error("Excel export failed", ex);
             notifications.create("Export failed: " + ex.getMessage())
-                    .withType(Notifications.Type.ERROR).show();
+                    .withType(Notifications.Type.ERROR)
+                    .withCloseable(true)
+                    .withDuration(ERROR_NOTIFICATION_DURATION_MS)
+                    .show();
         }
     }
 

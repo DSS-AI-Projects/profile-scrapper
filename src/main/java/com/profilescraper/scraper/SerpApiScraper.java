@@ -3,6 +3,7 @@ package com.profilescraper.scraper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.profilescraper.Http;
+import com.profilescraper.LocationFilter;
 import com.profilescraper.model.CandidateProfile;
 
 import java.net.URLEncoder;
@@ -38,7 +39,12 @@ public class SerpApiScraper extends AbstractPortalScraper {
 
     private static final String      SERPAPI_ENDPOINT  = "https://serpapi.com/search.json";
     private static final int         CONNECT_TIMEOUT_MS = 15_000;
-    private static final int         READ_TIMEOUT_MS    = 30_000;
+    /**
+     * SerpAPI page fetches vary widely — observed between 1s and 11s for the same query shape,
+     * and 30s was not enough headroom: a page-2 fetch overran it and failed the whole search
+     * with {@code SocketTimeoutException: Read timed out}.
+     */
+    private static final int         READ_TIMEOUT_MS    = 60_000;
     private static final int         RESULTS_PER_PAGE  = 10;  // Google returns 10 per page
     private static final int         MAX_PAGES         = 3;   // 3 API calls → up to 30 results
     private static final int         DEFAULT_MAX_RESULTS = 20; // KAN-27: hard cap on profiles returned
@@ -84,6 +90,22 @@ public class SerpApiScraper extends AbstractPortalScraper {
             + "(?=\\s*[.,|·\\n]|\\s*in\\s|\\s*since|\\s*$)",
             Pattern.MULTILINE);
 
+    /** Lowercase words that legitimately appear inside a place name ("City of Johannesburg"). */
+    private static final java.util.Set<String> PLACE_CONNECTIVES =
+            java.util.Set.of("of", "de", "da", "del", "van", "von", "upon", "al");
+
+    /**
+     * Job-title vocabulary. Title-cased occupation lists are structurally indistinguishable from
+     * place names ("Author, Celebrity Biographer, Animation Historian" parses exactly like
+     * "Mumbai, Maharashtra, India"), so they are rejected by vocabulary instead.
+     */
+    private static final Pattern OCCUPATION_WORD = Pattern.compile(
+            "(?i)\\b(author|biographer|historian|recruiter|recruiting|engineer|developer|manager|"
+            + "consultant|specialist|director|founder|ceo|cto|coo|officer|analyst|designer|"
+            + "architect|administrator|coordinator|executive|president|partner|advisor|adviser|"
+            + "strategist|marketer|writer|editor|producer|scientist|researcher|talent|sourcing|"
+            + "acquisition|staffing|hiring|filing|answering|phones)\\b");
+
     /** Standard e-mail address */
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
@@ -116,6 +138,7 @@ public class SerpApiScraper extends AbstractPortalScraper {
      */
     @Override
     public List<CandidateProfile> scrapeProfiles(String jobDescription,
+                                                  String location,
                                                   String apiKey,
                                                   String ignored) throws Exception {
         if (apiKey == null || apiKey.isBlank()) {
@@ -123,7 +146,7 @@ public class SerpApiScraper extends AbstractPortalScraper {
                     "SerpAPI key is required. Get a free key at https://serpapi.com/manage-api-key");
         }
 
-        String query = buildSerpQuery(jobDescription);
+        String query = buildSerpQuery(jobDescription, location);
         logger.info("SerpAPI: query=[{}]", query);
 
         List<CandidateProfile> profiles = new ArrayList<>();
@@ -191,7 +214,7 @@ public class SerpApiScraper extends AbstractPortalScraper {
      * <p>The query is prefixed with {@code site:linkedin.com/in/} to restrict hits to
      * public LinkedIn profile pages.
      */
-    private String buildSerpQuery(String jobDescription) {
+    private String buildSerpQuery(String jobDescription, String location) {
         String cleaned = jobDescription
                 // Keep letters, digits, common tech chars; collapse everything else to space
                 .replaceAll("[^a-zA-Z0-9#+./&() ]", " ")
@@ -233,7 +256,31 @@ public class SerpApiScraper extends AbstractPortalScraper {
                 jobDescription.length() > 80 ? jobDescription.substring(0, 80) + "…" : jobDescription,
                 cleaned);
 
-        return "site:linkedin.com/in/ " + cleaned;
+        return "site:linkedin.com/in/ " + cleaned + locationTerm(location);
+    }
+
+    /**
+     * The location as a Google term, appended after cleaning so stop-word stripping and the
+     * 80-char truncation above cannot drop it. Without it the search is global and location is
+     * left to post-filtering, which cannot tell where a profile is when LinkedIn's snippet
+     * does not say.
+     *
+     * <p>Parsed by {@link LocationFilter#cities(String)} — the same parse the filter uses.
+     * Quoting the field's raw text instead sent Google the literal phrase
+     * {@code "Mumbai, India only"}, which matches almost nothing, while the filter was
+     * meanwhile matching on just "Mumbai".
+     */
+    private String locationTerm(String location) {
+        List<String> cities = LocationFilter.cities(location);
+        if (cities.isEmpty()) return "";
+
+        StringBuilder term = new StringBuilder();
+        for (String city : cities) {
+            if (term.length() > 0) term.append(" OR ");
+            term.append('"').append(city.replace("\"", "")).append('"');
+        }
+        // Google needs the alternatives bracketed, or OR binds only the adjacent terms.
+        return cities.size() == 1 ? " " + term : " (" + term + ")";
     }
 
     // ─── HTTP call ────────────────────────────────────────────────────────────────
@@ -436,7 +483,8 @@ public class SerpApiScraper extends AbstractPortalScraper {
                     && val.length() <= 80
                     && p.getLocation().isBlank()
                     && !valLower.contains("connection")
-                    && !valLower.contains("follower")) {
+                    && !valLower.contains("follower")
+                    && looksLikePlace(val)) {
                 p.setLocation(val);
                 continue;
             }
@@ -544,6 +592,45 @@ public class SerpApiScraper extends AbstractPortalScraper {
      *   <li>does not contain a four-digit year (avoids date ranges)</li>
      * </ul>
      */
+    /**
+     * Rejects comma-separated text that is plainly not a place.
+     *
+     * <p>"Starts with a capital and contains a comma" alone matched job-title lists and bio
+     * prose, so profiles were recorded at locations like {@code "Filing, Answering phones"},
+     * {@code "Author, Celebrity Biographer, Animation Historian"} and
+     * {@code "I build and protect reputations for complex technology companies"}. A wrong
+     * location is worse than none: it defeats location filtering while looking authoritative.
+     *
+     * <p>A place name is short, has no verbs or sentence punctuation, and each comma-separated
+     * part is a couple of words at most — "Mumbai, Maharashtra, India", not a sentence.
+     */
+    private boolean looksLikePlace(String value) {
+        String v = value.trim();
+        if (v.length() > 60 || v.endsWith(".") || v.endsWith("…")) return false;
+        // Sentence-like punctuation or connectives never appear in a place name.
+        if (v.matches(".*[;:!?|/—–].*")) return false;
+        if (v.toLowerCase().matches(".*\\b(and|for|with|the|that|who|i|we|my|our)\\b.*")) return false;
+
+        if (OCCUPATION_WORD.matcher(v).find()) return false;
+
+        for (String part : v.split(",")) {
+            String token = part.trim();
+            if (token.isEmpty()) return false;
+            String[] words = token.split("\\s+");
+            // "Greater Mumbai Area" is fine; a phrase of five words is not a place.
+            if (words.length > 4) return false;
+            for (String word : words) {
+                // Places are title-cased throughout ("Navi Mumbai", "New Jersey"); a lowercase
+                // word signals prose — "Answering phones" rather than a city.
+                if (!Character.isUpperCase(word.charAt(0))
+                        && !PLACE_CONNECTIVES.contains(word.toLowerCase())) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     private String extractLocationFromSnippet(String snippet) {
         String[] segments = snippet.split("[·|\\n]");
         for (String seg : segments) {
@@ -556,7 +643,8 @@ public class SerpApiScraper extends AbstractPortalScraper {
                     && !t.toLowerCase().contains("linkedin")
                     && !t.toLowerCase().contains("view")
                     && !t.toLowerCase().contains("profile")
-                    && !t.matches(".*\\d{4}.*")) {
+                    && !t.matches(".*\\d{4}.*")
+                    && looksLikePlace(t)) {
                 return t;
             }
         }

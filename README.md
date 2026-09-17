@@ -85,9 +85,17 @@ Login: **admin / admin**
 
 1. **Enter a job description** — e.g. `"Senior Java Developer, 7+ years, Bangalore, fintech"`
 1. **Optionally set a Location** — e.g. `Mumbai`. This is a hard filter: candidates listed in a
-   different city are dropped from the results. Candidates whose location could not be
-   determined are kept, since an unknown location is not proof of a mismatch. Leave it blank to
-   search everywhere.
+   different city, **or with no stated location at all**, are dropped. Leave it blank to search
+   everywhere.
+   - **Several cities:** separate them with `;` — `Mumbai; Thane; Pune`. A candidate in any of
+     them is kept.
+   - **Commas narrow a single place**, they do not list alternatives: `Mumbai, Maharashtra` is
+     one city. So write `Mumbai; Thane`, not `Mumbai, Thane`.
+   - Matching is substring-based, so `Mumbai` already covers `Navi Mumbai` and
+     `Mumbai, Maharashtra, India`. You only need to list genuinely different names like `Thane`.
+   - Keep the **Job Description** keyword-style. For the SerpAPI path it is stripped of filler
+     words and truncated to ~80 characters, so prose wastes the budget. Prefer
+     `IT Technical Recruiter, technical hiring, sourcing, ATS, 3-6 years` over a full sentence.
 2. **Click Search Candidates** — the AI agent queries configured portals (takes 2–5 minutes)
 3. **Browse results** in the grid — sort by any column, scroll through pages
 4. **Click Export to Excel** — downloads `candidates_[role]_[date].xlsx`

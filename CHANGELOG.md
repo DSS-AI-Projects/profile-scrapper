@@ -22,7 +22,31 @@ All notable changes to this project are documented in this file.
   with no location — common on the SerpAPI path, which scrapes location best-effort from
   Google snippets — are kept rather than silently emptying the grid.
 
+- Accept several cities in the Location field, separated by `;` — `Mumbai; Thane; Pune`
+  keeps a candidate in any of them and asks Google for `("Mumbai" OR "Thane" OR "Pune")`.
+  Commas keep their existing meaning of narrowing one place (`Mumbai, Maharashtra`), because
+  one separator cannot mean both without `Mumbai, India` reading as two places.
+
 ### Fixed
+
+- Send the Location field to Google as the parsed city rather than its raw text. `Mumbai,
+  India only` was being quoted whole, so Google was asked for that literal phrase — matching
+  almost nothing — while the filter matched on just `Mumbai`. The query and the filter now
+  share one parse (`LocationFilter.cities`).
+- Stop dropping whole searches on a slow SerpAPI page: the 30s read timeout was under its
+  observed spread (1s to 11s for the same query shape, occasionally more) and a page-2 fetch
+  overran it, failing the search with `SocketTimeoutException: Read timed out`. Now 60s.
+- Make error notifications dismissable. They had no close button and no expiry, so a failed
+  search left an overlay that swallowed clicks on the controls beneath it — including the
+  Search button, so the search could not be retried.
+- Reject text that is not a place when parsing a candidate's location. "Starts with a capital
+  and contains a comma" also matches job-title lists and prose, so profiles were recorded at
+  locations like `Filing, Answering phones` and `Author, Celebrity Biographer, Animation
+  Historian`. A wrong location defeats location filtering while looking authoritative.
+- Search portals for the requested location instead of only filtering on it afterwards. The
+  Location field never reached the query, so a search for an IT recruiter in Mumbai asked
+  Google for IT recruiters worldwide and discarded the remainder — and kept any whose city
+  the snippet did not state.
 
 - Update the Gemini model from `gemini-2.0-flash`, which Google has retired, to
   `gemini-3.6-flash` — the replacement its 404 response names. Searches were failing with

@@ -57,14 +57,45 @@ class LocationFilterTest {
     }
 
     @Test
-    @DisplayName("Candidates with no location survive — unknown is not a mismatch")
-    void keepsBlankLocations() {
-        List<CandidateProfile> input = List.of(at(""), at("Bangalore"));
+    @DisplayName("Candidates with no location are dropped — unverifiable is not a match")
+    void dropsBlankLocations() {
+        List<CandidateProfile> input = List.of(at(""), at("Mumbai"), at("Bangalore"));
 
         List<CandidateProfile> result = LocationFilter.apply(input, "Mumbai");
 
-        assertEquals(List.of(""), locationsOf(result),
-                "blank is kept, a known-different city is not");
+        assertEquals(List.of("Mumbai"), locationsOf(result),
+                "only a stated, matching location survives");
+    }
+
+    @Test
+    @DisplayName("Semicolons list alternatives — any of them matches")
+    void semicolonSeparatedCitiesAllMatch() {
+        List<CandidateProfile> input = List.of(
+                at("Mumbai, Maharashtra, India"),
+                at("Thane, Maharashtra, India"),
+                at("Pune, Maharashtra, India"),
+                at("Bengaluru, Karnataka, India"));
+
+        List<CandidateProfile> result = LocationFilter.apply(input, "Mumbai; Thane");
+
+        assertEquals(List.of("Mumbai, Maharashtra, India", "Thane, Maharashtra, India"),
+                locationsOf(result), "Pune and Bengaluru were not asked for");
+    }
+
+    @Test
+    @DisplayName("Commas still narrow within each alternative")
+    void commasNarrowWithinEachAlternative() {
+        assertEquals(List.of("Mumbai", "Thane"),
+                LocationFilter.cities("Mumbai, Maharashtra; Thane, Maharashtra"),
+                "the comma qualifies a city, the semicolon separates cities");
+    }
+
+    @Test
+    @DisplayName("Blank and malformed separators name no city, so nothing is filtered")
+    void malformedInputDisablesFiltering() {
+        assertEquals(List.of(), LocationFilter.cities(" ; ; "));
+        List<CandidateProfile> input = List.of(at("Mumbai"), at("Bangalore"));
+        assertSame(input, LocationFilter.apply(input, " ; ; "));
     }
 
     @Test
