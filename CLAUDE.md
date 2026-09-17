@@ -73,6 +73,7 @@ src/main/java/com/profilescraper/
 ├── ProfileScraperAgent.java         # Gemini AI integration & orchestration (shared by both entry points)
 ├── ExcelExporter.java               # .xlsx generation with hyperlinks, colour-coded status
 ├── AppConfig.java                   # scraperExecutor thread pool bean (2-4 threads)
+├── LocationFilter.java              # enforces the UI Location field against scraper output
 ├── model/CandidateProfile.java      # candidate data model
 ├── service/ScraperService.java      # Spring @Service — routes to Gemini AI search or a PortalScraper
 ├── scraper/
@@ -107,6 +108,15 @@ noisy diff after any build. Treat changes there as build artifacts, not code rev
 - `AbstractPortalScraper` carries the shared Playwright setup for the three login-based
   scrapers; changes there affect LinkedIn, Naukri, and Indeed simultaneously. `SerpApiScraper`
   also extends it but overrides `scrapeProfiles` to use plain HTTP, ignoring the browser path.
+- **Search criteria are not self-enforcing.** Neither Gemini nor a Google query honours a
+  stated requirement reliably, so anything that must actually constrain results needs a
+  local check on the way out. Location works this way: it's a hard instruction in the
+  prompt *and* enforced by `LocationFilter`. The filter is deliberately lenient — it drops
+  a profile only when its location is present and clearly different, because `SerpApiScraper`
+  often can't determine a location at all and dropping blanks would empty the grid. On the
+  AI path it runs *before* the result cap so the cap is spent on matching candidates; on the
+  portal paths it runs in `ScraperService` after the scraper's own cap, so results can come
+  back short. Gemini `temperature` is 0.4, not the default 1.0, for the same reason.
 - `MainView` is a hybrid: a Jmix `StandardView` whose buttons come from the XML descriptor
   (`src/main/resources/com/profilescraper/view/main_view.xml`) via `@ViewComponent`, while the
   form fields (portal `ComboBox`, username/password, grid) are built programmatically in

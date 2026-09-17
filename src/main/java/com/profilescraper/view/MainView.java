@@ -67,6 +67,7 @@ public class MainView extends StandardView {
 
     // ── View components injected from main_view.xml ──────────────────────────
     @ViewComponent private TextArea        jobDescriptionField;
+    @ViewComponent private TextField       locationField;
     @ViewComponent private VerticalLayout  portalSelectionSection;   // mount point
     @ViewComponent private Button          searchBtn;
     @ViewComponent private Button          cancelBtn;
@@ -294,6 +295,8 @@ public class MainView extends StandardView {
         JobPortal portal   = portalComboBox.getValue();
         String    uname    = usernameField.getValue();
         String    pass     = passwordField.getValue();
+        final String location = locationField.getValue() == null
+                ? "" : locationField.getValue().trim();
 
         // Validate credentials when a portal is selected
         if (portal != null) {
@@ -334,7 +337,7 @@ public class MainView extends StandardView {
             currentSearch = CompletableFuture.supplyAsync(() -> {
                 try {
                     return scraperService.scrapeProfiles(
-                            jobDescription, finalPortal, finalUname, finalPass);
+                            jobDescription, location, finalPortal, finalUname, finalPass);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -346,7 +349,7 @@ public class MainView extends StandardView {
 
             currentSearch = CompletableFuture.supplyAsync(() -> {
                 try {
-                    return scraperService.scrapeProfiles(jobDescription);
+                    return scraperService.scrapeProfiles(jobDescription, location);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }

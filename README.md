@@ -84,6 +84,10 @@ Login: **admin / admin**
 ## Using the Web UI
 
 1. **Enter a job description** — e.g. `"Senior Java Developer, 7+ years, Bangalore, fintech"`
+1. **Optionally set a Location** — e.g. `Mumbai`. This is a hard filter: candidates listed in a
+   different city are dropped from the results. Candidates whose location could not be
+   determined are kept, since an unknown location is not proof of a mismatch. Leave it blank to
+   search everywhere.
 2. **Click Search Candidates** — the AI agent queries configured portals (takes 2–5 minutes)
 3. **Browse results** in the grid — sort by any column, scroll through pages
 4. **Click Export to Excel** — downloads `candidates_[role]_[date].xlsx`

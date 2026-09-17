@@ -86,9 +86,23 @@ public class ProfileScraperAgent {
 
     // ─── Public API ─────────────────────────────────────────────────────────────
 
+    /** Searches with no location constraint. */
     public List<CandidateProfile> scrapeProfiles(String jobDescription) throws Exception {
+        return scrapeProfiles(jobDescription, "");
+    }
+
+    /**
+     * @param location optional location constraint. When non-blank it is stated to Gemini as a
+     *                 hard requirement and then enforced locally by {@link LocationFilter},
+     *                 because a prompt instruction alone does not guarantee compliance.
+     *                 Filtering runs before the result cap so the cap is spent on candidates
+     *                 that actually match.
+     */
+    public List<CandidateProfile> scrapeProfiles(String jobDescription, String location)
+            throws Exception {
         logger.info("=== Profile Scraper Agent starting (Gemini 2.0 Flash) ===");
         logger.info("Job description: {}", jobDescription);
+        logger.info("Location constraint: {}", location == null || location.isBlank() ? "(none)" : location);
 
         System.out.println("\n" + "=".repeat(70));
         System.out.println(" Profile Scraper Agent — Powered by Gemini 2.0 Flash");
@@ -100,14 +114,19 @@ public class ProfileScraperAgent {
             return new ArrayList<>();
         }
 
-        String responseText = callGemini(jobDescription);
+        String responseText = callGemini(jobDescription, location);
 
         System.out.println("\n" + "-".repeat(70));
         System.out.println(" Parsing results...");
 
         List<CandidateProfile> profiles = parseProfiles(responseText);
-        List<CandidateProfile> limited  = applyResultLimit(profiles);
+        List<CandidateProfile> onLocation = LocationFilter.apply(profiles, location);
+        List<CandidateProfile> limited  = applyResultLimit(onLocation);
 
+        if (onLocation.size() != profiles.size()) {
+            logger.info("Location filter '{}' dropped {} of {} candidates.",
+                    location, profiles.size() - onLocation.size(), profiles.size());
+        }
         logger.info("Scraping complete. Found {} candidates, returning {} (cap={}).",
                 profiles.size(), limited.size(), MAX_RESULTS);
         System.out.println(" Found " + limited.size() + " candidates.");
@@ -132,7 +151,7 @@ public class ProfileScraperAgent {
 
     // ─── Gemini API call ─────────────────────────────────────────────────────────
 
-    private String callGemini(String jobDescription) throws Exception {
+    private String callGemini(String jobDescription, String location) throws Exception {
 
         // ── Build request body with Jackson (type-safe, no string concat) ─────────
         ObjectNode body = objectMapper.createObjectNode();
@@ -147,7 +166,7 @@ public class ProfileScraperAgent {
                 .addObject()
                 .put("role", "user")
                 .putArray("parts")
-                .addObject().put("text", buildUserPrompt(jobDescription));
+                .addObject().put("text", buildUserPrompt(jobDescription, location));
 
         // tools — enable built-in Google Search grounding
         body.putArray("tools")
@@ -157,7 +176,9 @@ public class ProfileScraperAgent {
         // generation_config
         body.putObject("generation_config")
                 .put("max_output_tokens", MAX_OUTPUT_TOKENS)
-                .put("temperature", 1.0);
+                // Low: this is constraint-following extraction, not creative writing. At 1.0 the
+                // model drifted off stated requirements such as location.
+                .put("temperature", 0.4);
 
         String requestJson = objectMapper.writeValueAsString(body);
         logger.debug("Gemini request (first 300 chars): {}",
@@ -298,6 +319,11 @@ public class ProfileScraperAgent {
                 ─────
                 ✓ Only PUBLICLY AVAILABLE information — no fabrication
                 ✓ Sort results: High → Medium → Low
+                ✓ An explicit location in the requirement is a HARD filter, not a scoring input.
+                  Candidates based elsewhere must be omitted entirely — never downgraded to a
+                  lower matchScore and returned anyway. Prefer returning fewer, correct results.
+                ✓ Always populate "location" for every candidate you return, so the requirement
+                  can be verified
 
                 OUTPUT FORMAT  (mandatory — end your response with this exact block, nothing after)
                 ──────────────────────────────────────────────────────────────────────────────────
@@ -323,15 +349,24 @@ public class ProfileScraperAgent {
                 """;
     }
 
-    private String buildUserPrompt(String jobDescription) {
+    private String buildUserPrompt(String jobDescription, String location) {
+        String locationClause = (location == null || location.isBlank()) ? "" : """
+
+                MANDATORY LOCATION FILTER: %s
+                Every candidate you return MUST currently be located in %s. Include the city in
+                each candidate's "location" field. Exclude anyone based elsewhere — do not return
+                them with a lower matchScore, leave them out entirely. Returning 5 candidates who
+                are genuinely in %s is a better answer than 20 who are not.
+                """.formatted(location, location, location);
+
         return """
                 Find candidate profiles matching this job requirement:
 
                 %s
-
+                %s
                 Use Google Search to find profiles on LinkedIn, Naukri.com, Indeed, Shine, and Monster.
                 Run multiple varied search queries to maximise coverage.
                 Return ALL results as a single ```json ... ``` code block at the very end.
-                """.formatted(jobDescription);
+                """.formatted(jobDescription, locationClause);
     }
 }
