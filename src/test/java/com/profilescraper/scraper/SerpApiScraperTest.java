@@ -19,6 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
  */
 class SerpApiScraperTest {
 
+    private static final int DEFAULT_CAP = 20;
+
     private final SerpApiScraper scraper = new SerpApiScraper();
 
     private static List<CandidateProfile> profiles(int count) {
@@ -33,22 +35,22 @@ class SerpApiScraperTest {
     }
 
     @Test
-    @DisplayName("More than 10 profiles is truncated to exactly 10, preserving order")
-    void truncatesToTenPreservingOrder() {
-        List<CandidateProfile> input = profiles(15);
+    @DisplayName("More than the cap is truncated to exactly the cap, preserving order")
+    void truncatesToCapPreservingOrder() {
+        List<CandidateProfile> input = profiles(DEFAULT_CAP + 5);
 
         List<CandidateProfile> result = scraper.applyResultLimit(input);
 
-        assertEquals(10, result.size(), "result should be capped at 10");
-        for (int i = 0; i < 10; i++) {
+        assertEquals(DEFAULT_CAP, result.size(), "result should be capped at " + DEFAULT_CAP);
+        for (int i = 0; i < DEFAULT_CAP; i++) {
             assertEquals("Candidate " + i, result.get(i).getFullName(),
-                    "order of the first 10 profiles must be preserved");
+                    "order of the first " + DEFAULT_CAP + " profiles must be preserved");
         }
     }
 
     @Test
-    @DisplayName("Fewer than 10 profiles pass through unchanged")
-    void passesThroughWhenFewerThanTen() {
+    @DisplayName("Fewer than the cap pass through unchanged")
+    void passesThroughWhenFewerThanCap() {
         List<CandidateProfile> input = profiles(7);
 
         List<CandidateProfile> result = scraper.applyResultLimit(input);
@@ -58,13 +60,13 @@ class SerpApiScraperTest {
     }
 
     @Test
-    @DisplayName("Exactly 10 profiles pass through unchanged")
-    void passesThroughWhenExactlyTen() {
-        List<CandidateProfile> input = profiles(10);
+    @DisplayName("Exactly the cap passes through unchanged")
+    void passesThroughWhenExactlyCap() {
+        List<CandidateProfile> input = profiles(DEFAULT_CAP);
 
         List<CandidateProfile> result = scraper.applyResultLimit(input);
 
         assertSame(input, result, "list exactly at the cap should be returned as-is");
-        assertEquals(10, result.size());
+        assertEquals(DEFAULT_CAP, result.size());
     }
 }

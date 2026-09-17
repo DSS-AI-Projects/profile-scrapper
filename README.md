@@ -11,7 +11,7 @@ AI-powered recruitment candidate profile scraper with a web UI and CLI interface
 - **Web UI** — JMIX Flow UI (Vaadin 24) with sortable, filterable data grid
 - **CLI mode** — Lightweight terminal interface for scripting and automation
 - **Excel export** — Formatted `.xlsx` with clickable profile links, colour-coded Open to Work status
-- **Pagination** — Portal login scrapers (LinkedIn/Naukri/Indeed via Playwright) fetch up to 30+ candidates across multiple search pages; the SerpAPI-based LinkedIn discovery path and the Gemini AI search return at most 10 profiles per search (overridable via the `SERP_API_MAX_RESULTS` environment variable)
+- **Pagination** — Portal login scrapers (LinkedIn/Naukri/Indeed via Playwright) fetch up to 30+ candidates across multiple search pages; the SerpAPI-based LinkedIn discovery path and the Gemini AI search return at most 20 profiles per search (overridable via the `SERP_API_MAX_RESULTS` environment variable)
 - **Status tracking** — Detects "Open to Work" and last-updated date per profile
 
 ---

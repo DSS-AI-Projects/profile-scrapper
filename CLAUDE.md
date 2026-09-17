@@ -59,7 +59,7 @@ entirely. (The README's "admin/admin" login is stale; there's no auth gate to hi
 | Variable | Required | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` | Yes (for either entry point) | Read via `${GEMINI_API_KEY}` in `application.properties` → `gemini.api-key` → injected into `ScraperService`'s constructor |
-| `SERP_API_MAX_RESULTS` | No | Overrides the default 10-profile result cap (KAN-27). Despite the name it is read in **two** places — `SerpApiScraper` *and* `ProfileScraperAgent` — so it caps the Gemini AI search path too, not just SerpAPI. Blank/non-numeric/≤0 silently falls back to 10 |
+| `SERP_API_MAX_RESULTS` | No | Overrides the default 20-profile result cap (KAN-27). Despite the name it is read in **two** places — `SerpApiScraper` *and* `ProfileScraperAgent` — so it caps the Gemini AI search path too, not just SerpAPI. Blank/non-numeric/≤0 silently falls back to 20. The two `DEFAULT_MAX_RESULTS` constants are separate copies; change both or the paths diverge |
 
 SerpAPI and portal (LinkedIn/Naukri/Indeed) credentials are entered directly in the web UI per
 search, not via environment variables.

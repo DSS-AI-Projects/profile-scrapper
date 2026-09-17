@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
  */
 class ProfileScraperAgentTest {
 
-    private static final int DEFAULT_CAP = 10;
+    private static final int DEFAULT_CAP = 20;
 
     private static List<CandidateProfile> profiles(int count) {
         List<CandidateProfile> list = new ArrayList<>();
@@ -34,7 +34,7 @@ class ProfileScraperAgentTest {
 
     @Test
     void truncatesMoreThanCapToExactlyCapPreservingOrder() {
-        List<CandidateProfile> input = profiles(15);
+        List<CandidateProfile> input = profiles(DEFAULT_CAP + 5);
 
         List<CandidateProfile> result = ProfileScraperAgent.applyResultLimit(input);
 

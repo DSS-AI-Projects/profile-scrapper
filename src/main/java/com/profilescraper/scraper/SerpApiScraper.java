@@ -43,7 +43,7 @@ public class SerpApiScraper extends AbstractPortalScraper {
     private static final String      SERPAPI_ENDPOINT  = "https://serpapi.com/search.json";
     private static final int         RESULTS_PER_PAGE  = 10;  // Google returns 10 per page
     private static final int         MAX_PAGES         = 3;   // 3 API calls → up to 30 results
-    private static final int         DEFAULT_MAX_RESULTS = 10; // KAN-27: hard cap on profiles returned
+    private static final int         DEFAULT_MAX_RESULTS = 20; // KAN-27: hard cap on profiles returned
     /**
      * Hard cap on the number of profiles returned by this scraper (KAN-27).
      * Defaults to {@value #DEFAULT_MAX_RESULTS}; can be overridden without a code

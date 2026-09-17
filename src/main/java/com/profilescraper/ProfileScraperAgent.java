@@ -40,7 +40,7 @@ public class ProfileScraperAgent {
                                                 + "/v1beta/models/gemini-2.0-flash:generateContent";
     private static final int    MAX_OUTPUT_TOKENS = 8192;
 
-    private static final int    DEFAULT_MAX_RESULTS = 10; // KAN-27: hard cap on profiles returned
+    private static final int    DEFAULT_MAX_RESULTS = 20; // KAN-27: hard cap on profiles returned
     /**
      * Hard cap on the number of profiles returned by the AI search (KAN-27).
      * Defaults to {@value #DEFAULT_MAX_RESULTS}; can be overridden without a code
@@ -168,7 +168,7 @@ public class ProfileScraperAgent {
                 .uri(URI.create(API_URL + "?key=" + apiKey))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(requestJson))
-                .timeout(Duration.ofSeconds(180))
+                .timeout(Duration.ofSeconds(300))
                 .build();
 
         HttpResponse<String> response =
