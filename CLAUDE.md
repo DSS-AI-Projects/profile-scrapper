@@ -8,7 +8,7 @@ JMIX Flow UI (Vaadin 24 + Spring Boot 3) web app and a standalone CLI, sharing t
 ## Tech stack
 
 - Java 17, Maven (no wrapper — `mvn` must be on PATH)
-- Spring Boot 3.5 + JMIX 2.8 (Flow UI / Vaadin 24.9.13) — web UI
+- Spring Boot 3.5.11 + JMIX 2.8 (Flow UI / Vaadin platform 24.9.12, Flow 24.9.13) — web UI
 - Gemini 2.0 Flash (Google AI) via raw `java.net.http.HttpClient` — no SDK dependency
 - Microsoft Playwright 1.44 — portal browser automation (LinkedIn/Naukri/Indeed login scraping)
 - SerpAPI — credential-free LinkedIn discovery via Google Search
@@ -92,18 +92,15 @@ noisy diff after any build. Treat changes there as build artifacts, not code rev
 
 ## Gotchas specific to this app
 
-- **Build-plugin versions must be pinned, or Maven silently resolves the newest release.**
-  Two plugins in this pom are affected, and Maven warns about both on every build:
-  - `vaadin-maven-plugin` — unpinned it resolved to `25.2.4` against this project's Vaadin 24.x
-    jars and broke `prepare-frontend` with `NoSuchMethodError` on
-    `EngineAutoConfiguration$Builder`. It is now pinned, but to `24.9.13`, which is the **Flow**
-    version, not the **platform** version. jmix-bom 2.8.0 resolves platform `vaadin-core` to
-    `24.9.12` and Flow to `24.9.13` (Flow versions run slightly ahead of the platform), so the
-    correct pin is **`24.9.12`** — plugin `24.9.13` expects Flow `24.9.14` and logs a
-    version-mismatch warning on every build. Bump alongside `jmix.version`.
-  - `spring-boot-maven-plugin` — still unpinned, and currently resolves to **`4.1.0`** while the
-    app runs Spring Boot **`3.5.11`** (via jmix-bom). `spring-boot:run` works today, but this is
-    the same latent failure mode as the Vaadin plugin; pin it to `3.5.11`.
+- **Keep build-plugin versions pinned.** Both plugins below were once declared without a
+  `<version>`, so Maven resolved whatever the newest release happened to be — and broke:
+  - `vaadin-maven-plugin`, pinned to **`24.9.12`**. Unpinned it grabbed `25.2.4` against this
+    project's Vaadin 24.x jars and failed `prepare-frontend` outright with `NoSuchMethodError`
+    on `EngineAutoConfiguration$Builder`. Pin to the **platform** version (`vaadin-core`), not
+    the **Flow** version: jmix-bom 2.8.0 resolves platform `24.9.12` but Flow `24.9.13` (Flow
+    runs slightly ahead). Pinning `24.9.13` builds, but warns on every run. Bump with `jmix.version`.
+  - `spring-boot-maven-plugin`, pinned to **`3.5.11`** to match the Spring Boot jmix-bom brings
+    in. Unpinned it resolved to `4.1.0` — a major version ahead of the running framework.
 - **`ScraperService`'s constructor builds a `ProfileScraperAgent`/`HttpClient` eagerly** — a
   missing `GEMINI_API_KEY` or a broken JVM network stack fails Spring context startup
   (`BeanCreationException` on `scraperService`), not a later HTTP call.
